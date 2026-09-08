@@ -28,12 +28,17 @@ struct Vertex {
 
     // el-ph variables
     Eigen::Matrix3d vertex_strength_component {Eigen::Matrix3d::Identity()};
+    double vertex_strength_component_scalar {0.};
     Eigen::Matrix3d vertex_wf_component {Eigen::Matrix3d::Identity()};
 
     Vertex * prev {nullptr}; // link to previous vertex
     Vertex * next {nullptr}; // link to following vertex
     Vertex * conj_vertex {nullptr};
 
+    // matrices for trace weights
+    Eigen::Matrix3d right_component {Eigen::Matrix3d::Identity()}; // component to right (to end of diagram)
+    Eigen::Matrix3d left_component {Eigen::Matrix3d::Identity()}; // component to the left (to beginning of diagram)
+    
     inline std::array<double, 3> electronEnergy() const {
         assert(eff_masses[0] != 0);
         assert(eff_masses[1] != 0);
@@ -88,9 +93,14 @@ struct Vertex {
     }
 
     void vertexStrength() {
-        vertex_strength_component[0] = Coupling::Strength::compute(w, ph_energy, diel_response, eff_masses[0]);
-        vertex_strength_component[1] = Coupling::Strength::compute(w, ph_energy, diel_response, eff_masses[1]);
-        vertex_strength_component[2] = Coupling::Strength::compute(w, ph_energy, diel_response, eff_masses[2]);
+        vertex_strength_component(0,0) = Coupling::Strength::compute(w, ph_energy, diel_response, eff_masses[0]);
+        vertex_strength_component(1,1) = Coupling::Strength::compute(w, ph_energy, diel_response, eff_masses[1]);
+        vertex_strength_component(2,2) = Coupling::Strength::compute(w, ph_energy, diel_response, eff_masses[2]);
+    }
+    
+    // in most simulations the effective mass doesn't affect the strength of the interaction
+    void vertexStrengthScalar() {
+        vertex_strength_component_scalar = Coupling::Strength::compute(w, ph_energy, diel_response);
     }
     
     void vertexOverlap() {
