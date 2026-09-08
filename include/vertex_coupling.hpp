@@ -18,15 +18,15 @@ namespace Coupling {
     };
 
     namespace Strength {
-        inline constexpr double alpha(const double& ph_energy, const double& diel_response, const double& eff_mass) {
+        inline double alpha(const double& ph_energy, const double& diel_response, const double& eff_mass = 1) {
             return ((1./diel_response)*std::sqrt(eff_mass/(2*ph_energy)));
         }
 
-        inline constexpr double compute(
+        inline double compute(
                 const std::array<double, 3>& w,
                 const double& ph_energy,
                 const double& diel_response,
-                const double& eff_mass
+                const double& eff_mass = 1
                 ) {
             return ((1./(w[0]*w[0]+w[1]*w[1]+w[2]*w[2]))*std::sqrt(2.*std::sqrt(2.)*std::numbers::pi*std::pow(ph_energy,1.5)*alpha(ph_energy, diel_response, eff_mass)
                     /(Parameters::V_unit_cell*Parameters::V_BvK*std::sqrt(eff_mass))));
@@ -35,7 +35,7 @@ namespace Coupling {
         }
     
     namespace LKOverlap{
-        inline constexpr double compute(const Eigen::Vector3d& c1, const Eigen::Vector3d& c2) {
+        inline double compute(const Eigen::Vector3d& c1, const Eigen::Vector3d& c2) {
             return c1.dot(c2);
         }
 
