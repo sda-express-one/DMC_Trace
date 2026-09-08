@@ -43,12 +43,15 @@ struct Vertex {
         assert(eff_masses[0] != 0);
         assert(eff_masses[1] != 0);
         assert(eff_masses[2] != 0);
-        return std::array<double, 3> {k[0]/(2*eff_masses[0]), k[1]/(2*eff_masses[1]), k[2]/(2*eff_masses[2])};
+        double k_sq = {k[0]*k[0] + k[1]*k[1] + k[2]*k[2]};
+
+        return std::array<double, 3> {k_sq/(2*eff_masses[0]), k_sq/(2*eff_masses[1]), k_sq/(2*eff_masses[2])};
     }
 
     inline double electronEnergy(int index) const {
         assert(eff_masses[index] != 0);
-        return k[index]/(2*eff_masses[index]);
+        double k_sq = {k[0]*k[0] + k[1]*k[1] + k[2]*k[2]};
+        return k_sq/(2*eff_masses[index]);
     }
 
     inline void computeElPropAction(){
