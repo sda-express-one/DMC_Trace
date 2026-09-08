@@ -1,22 +1,25 @@
 #ifndef CHG_TAU_HPP
 #define CHG_TAU_HPP
 
+#include <algorithm>
 #include <cmath>
 #include <random>
 #include <cassert>
 #include <simplemc/random/xoshiro256.hpp>
 #include "../vertex.hpp"
+#include "../weight_computation.hpp"
 
 struct chg_tau_cfg {
+    Vertex * diagram_head {nullptr};
     Vertex * diagram_tail {nullptr};
-    Vertex * vertex {nullptr}; // pointer to vertex beforen tail
-    double tau_current {0.};
+    
     const double tau_max {50.};
-    const double chem_pot {1.};
+    const double chem_pot {-1.};
 
-    chg_tau_cfg(Vertex * diagram_tail, double tau_max = 50.0, double chem_pot = 1.0) 
-        : diagram_tail(diagram_tail), tau_max(tau_max), chem_pot(chem_pot) {
+    chg_tau_cfg(Vertex * diagram_head, Vertex * diagram_tail, double tau_max = 50.0, double chem_pot = -1.0) 
+        : diagram_head(diagram_head), diagram_tail(diagram_tail), tau_max(tau_max), chem_pot(chem_pot) {
         assert(this->diagram_tail != nullptr);
+        assert(this->chem_pot < 0);     
     }
 };
 
@@ -24,22 +27,41 @@ struct chg_tau_update {
     chg_tau_cfg* cfg;
     simplemc::xoshiro256ss* rng;
     mutable std::uniform_real_distribution<double> std_unif {0.,1.};
-
+    Vertex * vertex {nullptr};
+    Eigen::Matrix3d new_action {Eigen::Matrix3d::Identity()};
+    double tau_last_vertex {0.};
     double tau_proposed {0.};
 
     double attempt(){
-        this->cfg->vertex = this->cfg->diagram_tail->prev;
-        this->cfg->tau_current = this->cfg->vertex->tau;
+        this->vertex = this->cfg->diagram_tail->prev;
+        assert(this->vertex != nullptr);
+        this->tau_last_vertex = this->vertex->tau;
         
-        // placeholder to change
-        tau_proposed = this->cfg->tau_current - std::log(1 - std_unif(*rng))/((this->cfg->vertex->electronEnergy())[0] - this->cfg->chem_pot);
+        const std::array<double, 3> energies {this->vertex->electronEnergy()};
+        const double lowest_energy {*std::min_element(energies.begin(), energies.end())};
+        tau_proposed = this->tau_last_vertex - std::log(1 - std_unif(*rng))/(lowest_energy - this->cfg->chem_pot);
 
-        return -1.;
+        if(tau_proposed > this->cfg->tau_max){
+            return -1.;
+        }
+
+        this->new_action(0,0) = std::exp(-energies[0]*(tau_proposed - this->tau_last_vertex));
+        this->new_action(1,1) = std::exp(-energies[1]*(tau_proposed - this->tau_last_vertex));
+        this->new_action(2,2) = std::exp(-energies[2]*(tau_proposed - this->tau_last_vertex));
+
+        double numerator {std::exp(-lowest_energy * this->cfg->diagram_tail->tau) * this->new_action.trace()};
+        double denominator {std::exp(-lowest_energy * tau_proposed) * this->vertex->el_prop_action.trace()};
+
+        return (numerator/denominator);
     }
 
     void accept(){
-        cfg->vertex->tau_next = tau_proposed;
-        cfg->diagram_tail->tau = tau_proposed;
+        this->vertex->tau_next = tau_proposed;
+        this->cfg->diagram_tail->tau = tau_proposed;
+
+        this->vertex->el_prop_action = this->new_action;
+
+        weight::LKMatrix::computeRightSide(cfg->diagram_head, cfg->diagram_tail);
     }
 };
 
