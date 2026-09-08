@@ -11,46 +11,46 @@ namespace weight {
     }
 
     namespace LKMatrix {
-        inline Eigen::Matrix3d computeTraceRightSide(Vertex * left_most, Vertex * diagram_tail){
+        inline void computeRightSide(Vertex * left_most, Vertex * diagram_tail){
             assert(left_most != nullptr);
             assert(diagram_tail != nullptr);
 
             Vertex * ptr {diagram_tail->prev};
 
-            Eigen::Matrix3d trace_right {Eigen::Matrix3d::Identity()};
+            Eigen::Matrix3d weight_right {Eigen::Matrix3d::Identity()};
 
             while (ptr != left_most->next) {
-                trace_right =  ptr->vertex_wf_component * ptr->el_prop_action.diagonal().asDiagonal() * trace_right;
+                weight_right =  ptr->vertex_wf_component * ptr->el_prop_action.diagonal().asDiagonal() * weight_right;
 
-                ptr->right_component = trace_right;
+                ptr->right_component = weight_right;
 
                 ptr = ptr->prev;
             }
 
-            trace_right = ptr->el_prop_action.diagonal().asDiagonal() * trace_right;
+            weight_right = ptr->el_prop_action.diagonal().asDiagonal() * weight_right;
 
-            return trace_right;
+            ptr->right_component = weight_right;
         }
 
-        inline Eigen::Matrix3d computeTraceLeftSide(Vertex * right_most, Vertex * diagram_head){
+        inline void computeLeftSide(Vertex * right_most, Vertex * diagram_head){
             assert(right_most != nullptr);
             assert(diagram_head != nullptr);
 
-            Vertex * ptr {right_most->prev};
+            Vertex * ptr {diagram_head->next};
 
-            Eigen::Matrix3d trace_left {Eigen::Matrix3d::Identity()};
+            Eigen::Matrix3d weight_left {Eigen::Matrix3d::Identity()};
 
-            while (ptr != diagram_head) {
-                trace_left =  ptr->vertex_wf_component * ptr->el_prop_action.diagonal().asDiagonal() * trace_left;
+            while (ptr != right_most->prev) {
+                weight_left = weight_left * ptr->vertex_wf_component * ptr->el_prop_action.diagonal().asDiagonal();
 
-                ptr->left_component = trace_left;
+                ptr->left_component = weight_left;
 
-                ptr = ptr->prev;
+                ptr = ptr->next;
             }
 
-            trace_left = ptr->el_prop_action.diagonal().asDiagonal() * trace_left; 
+            weight_left = weight_left * ptr->el_prop_action.diagonal().asDiagonal();
 
-            return trace_left;
+            ptr->left_component = weight_left;
         }
     }
 }
