@@ -20,9 +20,7 @@ struct VertexPointerManager {
     std::vector<VertexPointer> ptr_vertex_vector;
     mutable simplemc::xoshiro256ss * rng;
 
-    VertexPointerManager(int max_length, simplemc::xoshiro256ss * rng) : max_length(max_length), rng(rng) {
-        ptr_vertex_vector.reserve(this->max_length);
-    }
+    VertexPointerManager(int max_length, simplemc::xoshiro256ss * rng); 
 
     void addVertexPointers(Vertex * vertex_one, Vertex * vertex_two){
         assert(vertex_one != nullptr);
