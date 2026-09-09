@@ -6,6 +6,7 @@
 #include <simplemc/random/xoshiro256.hpp>
 #include "../vertex.hpp"
 #include "updates_config.hpp"
+#include "../weight_computation.hpp"
 
 struct mv_tau_update {
     updates_cfg * cfg;
@@ -48,7 +49,7 @@ struct mv_tau_update {
         const std::array<double, 3> energies_outgoing {this->vertex->electronEnergy()};
         const double lowest_energy_outgoing {*std::min_element(energies_outgoing.begin(), energies_outgoing.end())};
 
-        const int ph_type {vertex->type};
+        const int ph_type {vertex->type > 0 ? +1 : -1};
 
         const double ph_energy {vertex->phononEnergy()*static_cast<double>(ph_type)};
 
@@ -94,7 +95,14 @@ struct mv_tau_update {
     }
 
     void accept(){
+        this->vertex->prev->tau_next = tau_proposed;
+        this->vertex->tau = tau_proposed;
+        
+        this->vertex->prev->el_prop_action = new_action_el_incoming;
+        this->vertex->el_prop_action =  new_action_el_outgoing;
 
+        weight::LKMatrix::computeRightSide(this->cfg->diagram_head, this->vertex->next);
+        weight::LKMatrix::computeLeftSide(this->cfg->diagram_tail, this->vertex->prev);
     }
 };
 

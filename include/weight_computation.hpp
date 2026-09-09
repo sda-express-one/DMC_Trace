@@ -12,11 +12,11 @@ namespace weight {
     }
 
     namespace LKMatrix {
-        inline void computeRightSide(Vertex * left_most, Vertex * diagram_tail){
+        inline void computeRightSide(Vertex * left_most, Vertex * right_most){
             assert(left_most != nullptr);
-            assert(diagram_tail != nullptr);
+            assert(right_most != nullptr);
 
-            Vertex * ptr {diagram_tail->prev};
+            Vertex * ptr {right_most->prev};
 
             Eigen::Matrix3d weight_right {Eigen::Matrix3d::Identity()};
 
@@ -35,13 +35,13 @@ namespace weight {
             ptr->right_component = weight_right;
         }
 
-        inline void computeLeftSide(Vertex * right_most, Vertex * diagram_head){
+        inline void computeLeftSide(Vertex * right_most, Vertex * left_most){
             assert(right_most != nullptr);
-            assert(diagram_head != nullptr);
+            assert(left_most != nullptr);
 
-            Vertex * ptr {diagram_head};
+            Vertex * ptr {left_most};
 
-            Eigen::Matrix3d weight_left {diagram_head->el_prop_action.diagonal().asDiagonal()};
+            Eigen::Matrix3d weight_left {left_most->el_prop_action.diagonal().asDiagonal()};
 
             ptr = ptr->next;
 
