@@ -49,8 +49,15 @@ struct chg_tau_update {
         this->new_action(1,1) = std::exp(-energies[1]*(tau_proposed - this->tau_last_vertex));
         this->new_action(2,2) = std::exp(-energies[2]*(tau_proposed - this->tau_last_vertex));
 
-        double numerator {std::exp(-lowest_energy * this->cfg->diagram_tail->tau) * this->new_action.trace()};
-        double denominator {std::exp(-lowest_energy * tau_proposed) * this->vertex->el_prop_action.trace()};
+        const double diagram_weight_current {
+            (vertex->vertex_wf_component * vertex->el_prop_action.diagonal().asDiagonal() * vertex->left_component).trace()
+        };
+        const double diagram_weight_proposed {
+            (vertex->vertex_wf_component * this->new_action * vertex->left_component).trace()
+        };
+
+        double numerator {std::exp(-lowest_energy * this->cfg->diagram_tail->tau) * diagram_weight_proposed};
+        double denominator {std::exp(-lowest_energy * tau_proposed) * diagram_weight_current};
 
         return (numerator/denominator);
     }

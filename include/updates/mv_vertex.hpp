@@ -7,19 +7,14 @@
 #include "../vertex.hpp"
 #include "updates_config.hpp"
 
-struct mv_tau_cfg {
-
-};
-
 struct mv_tau_update {
     updates_cfg * cfg;
     simplemc::xoshiro256ss* rng;
-    std::uniform_real_distribution<double> std_unif {0.,1.};
+    mutable std::uniform_real_distribution<double> std_unif {0.,1.};
     Vertex * vertex {nullptr};
     Eigen::Matrix3d new_action_el_incoming {Eigen::Matrix3d::Identity()};
     Eigen::Matrix3d new_action_el_outgoing {Eigen::Matrix3d::Identity()};
     int index {-1};
-    double tau_next {0.};
     double tau_proposed {0.};
 
     double attempt(){
@@ -32,13 +27,15 @@ struct mv_tau_update {
         index = choose_v(*rng); 
 
         if(index < this->cfg->internal_ph_manager->current_length){
-            vertex = this->cfg->internal_ph_manager->ptr_vertex_vector[index].linked_vertex;
+            vertex = this->cfg->internal_ph_manager->selectVertex(index);
         }
         else {
             index -= this->cfg->internal_ph_manager->current_length;
-            vertex = this->cfg->external_ph_manager->ptr_vertex_vector[index].linked_vertex;
+            vertex = this->cfg->external_ph_manager->selectVertex(index);
         }
         assert(vertex != nullptr);
+        assert(vertex != this->cfg->diagram_head);
+        assert(vertex != this->cfg->diagram_tail);
         assert(vertex->prev != nullptr);
         assert(vertex->next != nullptr);
         
@@ -64,11 +61,7 @@ struct mv_tau_update {
 
         const double diagram_weight_current {
             (
-                vertex->prev->vertex_wf_component * 
-                vertex->prev->el_prop_action.diagonal().isDiagonal() *
                 vertex->vertex_wf_component *
-                vertex->el_prop_action.diagonal().isDiagonal() *
-                vertex->next->vertex_wf_component*
                 vertex->right_component *
                 vertex->left_component
             ).trace()
@@ -89,8 +82,8 @@ struct mv_tau_update {
                 vertex->vertex_wf_component *
                 new_action_el_outgoing *
                 vertex->next->vertex_wf_component *
-                vertex->right_component *
-                vertex->left_component
+                vertex->next->right_component *
+                vertex->prev->left_component
             ).trace()
         };
 
