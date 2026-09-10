@@ -22,14 +22,14 @@ struct PhononModeManager{
         assert(static_cast<int>(phonon_mode_pool.size()) == num_phonon_modes);
     }
 
-    const PhononMode * drawPhononMode() const {
+    const int drawPhononMode() const {
         assert(rng != nullptr);
         assert(num_phonon_modes > 0);
 
         std::uniform_int_distribution<int> select {0, num_phonon_modes - 1};
         const int position {select(*rng)};
 
-        return &phonon_mode_pool[position];
+        return position;
     }
 };
 

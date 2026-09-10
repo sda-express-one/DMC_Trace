@@ -19,7 +19,9 @@ struct updates_cfg {
 
     const int max_order_int {0};
     const int max_order_ext {0};
-    
+    const int max_vertices {0}; // = max_order_int + max_order_ext + 2, computed once here so
+                                 // every consumer reads the same bound instead of re-deriving it
+
     const double tau_max {50.};
     const double chem_pot {-1.};
 

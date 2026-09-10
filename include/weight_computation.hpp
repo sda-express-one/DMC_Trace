@@ -1,12 +1,20 @@
 #ifndef WEIGHT_COMPUTATION_HPP
 #define WEIGHT_COMPUTATION_HPP
 
+#include <array>
 #include <Eigen/Core>
 #include <Eigen/src/Core/util/XprHelper.h>
 #include <cassert>
 #include "vertex.hpp"
 
 namespace weight {
+    struct ProposedVertexWeight {
+        std::array<double, 3> k {0., 0., 0.};
+        double electron_energy {0.};
+        Eigen::Matrix3d el_prop_action {Eigen::Matrix3d::Identity()};
+        Eigen::Matrix3d vertex_wf_component {Eigen::Matrix3d::Identity()};
+    };
+
     namespace phononic {
 
     }

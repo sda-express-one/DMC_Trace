@@ -9,20 +9,19 @@ updates_cfg::updates_cfg(
     VertexPointerManager * external_ph_manager,
     PhononModeManager * phonon_mode_manager
     ) :
-        tau_max(tau_max),
-        chem_pot(chem_pot),
         internal_ph_manager(internal_ph_manager),
         external_ph_manager(external_ph_manager),
         phonon_mode_manager(phonon_mode_manager),
         max_order_int(internal_ph_manager->max_length),
-        max_order_ext(external_ph_manager->max_length)
+        max_order_ext(external_ph_manager->max_length),
+        max_vertices(max_order_int + max_order_ext + 2),
+        tau_max(tau_max),
+        chem_pot(chem_pot)
 {
     assert(this->chem_pot < 0);
     assert(internal_ph_manager != nullptr);
     assert(external_ph_manager != nullptr);
     assert(phonon_mode_manager != nullptr);
-
-    const int max_vertices {max_order_int + max_order_ext + 2};
     assert(max_vertices >= 2);
 
     // single fixed-size allocation: every element's address is stable for the
@@ -62,6 +61,7 @@ updates_cfg::updates_cfg(updates_cfg&& other) noexcept :
     phonon_mode_manager(other.phonon_mode_manager),
     max_order_int(other.max_order_int),
     max_order_ext(other.max_order_ext),
+    max_vertices(other.max_vertices),
     tau_max(other.tau_max),
     chem_pot(other.chem_pot)
 {
