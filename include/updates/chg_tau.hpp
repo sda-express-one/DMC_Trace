@@ -8,23 +8,10 @@
 #include <simplemc/random/xoshiro256.hpp>
 #include "../vertex.hpp"
 #include "../weight_computation.hpp"
-
-struct chg_tau_cfg {
-    Vertex * diagram_head {nullptr};
-    Vertex * diagram_tail {nullptr};
-    
-    const double tau_max {50.};
-    const double chem_pot {-1.};
-
-    chg_tau_cfg(Vertex * diagram_head, Vertex * diagram_tail, double tau_max = 50.0, double chem_pot = -1.0) 
-        : diagram_head(diagram_head), diagram_tail(diagram_tail), tau_max(tau_max), chem_pot(chem_pot) {
-        assert(this->diagram_tail != nullptr);
-        assert(this->chem_pot < 0);     
-    }
-};
+#include "updates_config.hpp"
 
 struct chg_tau_update {
-    chg_tau_cfg* cfg;
+    updates_cfg * cfg;
     simplemc::xoshiro256ss* rng;
     mutable std::uniform_real_distribution<double> std_unif {0.,1.};
     Vertex * vertex {nullptr};
@@ -39,7 +26,25 @@ struct chg_tau_update {
         
         const std::array<double, 3> energies {this->vertex->electronEnergy()};
         const double lowest_energy {*std::min_element(energies.begin(), energies.end())};
-        tau_proposed = this->tau_last_vertex - std::log(1 - std_unif(*rng))/(lowest_energy - this->cfg->chem_pot);
+        double ext_ph_energies {0.};
+        
+        {
+            int counter {0};
+
+            for(int i {0}; i < this->cfg->external_ph_manager->current_length; ++i){
+                if(this->cfg->external_ph_manager->ptr_vertex_pool[i].linked_vertex->type == -2){
+                    ext_ph_energies += this->cfg->external_ph_manager->ptr_vertex_pool[i].linked_vertex->ph_energy;
+                    ++counter;
+                }
+                if(counter == this->cfg->external_ph_manager->current_length/2){
+                    break;
+                }
+            }
+        }
+
+        const double total_lowest_energy {lowest_energy - this->cfg->chem_pot + ext_ph_energies};
+
+        tau_proposed = this->tau_last_vertex - std::log(1 - std_unif(*rng))/total_lowest_energy;
 
         if(tau_proposed > this->cfg->tau_max){
             return -1.;
@@ -65,10 +70,25 @@ struct chg_tau_update {
     void accept(){
         this->vertex->tau_next = tau_proposed;
         this->cfg->diagram_tail->tau = tau_proposed;
+        this->cfg->current_tau_length = tau_proposed;
 
         this->vertex->el_prop_action = this->new_action;
 
         weight::LKMatrix::computeRightSide(cfg->diagram_head, cfg->diagram_tail);
+
+        {
+            int counter {0};
+
+            for(int i {0}; i < this->cfg->external_ph_manager->current_length; ++i){
+                if(this->cfg->external_ph_manager->ptr_vertex_pool[i].linked_vertex->type == -2){
+                    this->cfg->external_ph_manager->ptr_vertex_pool[i].linked_vertex->computeExternalPhPropAction(tau_proposed);
+                    ++counter;
+                }
+                if(counter == this->cfg->external_ph_manager->current_length/2){
+                    break;
+                }
+            }
+        }
     }
 };
 

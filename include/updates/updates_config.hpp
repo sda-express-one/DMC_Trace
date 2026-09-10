@@ -21,6 +21,8 @@ struct updates_cfg {
     const double tau_max {50.};
     const double chem_pot {-1.};
 
+    double current_tau_length {1.};
+
     updates_cfg(
             std::array<double, 3> k_init = {0, 0, 0},
             double tau_max = 50.0,

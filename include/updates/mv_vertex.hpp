@@ -53,7 +53,8 @@ struct mv_tau_update {
 
         const double ph_energy {vertex->phononEnergy()*static_cast<double>(ph_type)};
 
-        const double deltaE {lowest_energy_incoming - lowest_energy_outgoing - ph_energy}; 
+        const double deltaE_electronic {lowest_energy_incoming - lowest_energy_outgoing};
+        const double deltaE {deltaE_electronic - ph_energy};
 
         tau_proposed = tau_prev - std::log(1 - std_unif(*rng)*(1 - std::exp(-deltaE*(tau_next - tau_prev))))/deltaE;
 
@@ -88,8 +89,8 @@ struct mv_tau_update {
             ).trace() 
         };
 
-        const double numerator {std::exp(-deltaE * vertex->tau) * diagram_weight_proposed * std::exp(-ph_energy*(this->vertex->tau - this->tau_proposed))};
-        const double denominator {std::exp(-deltaE * tau_proposed) * diagram_weight_current};
+        const double numerator {std::exp(-deltaE_electronic * vertex->tau) * diagram_weight_proposed};
+        const double denominator {std::exp(-deltaE_electronic * tau_proposed) * diagram_weight_current};
 
         return (numerator/denominator);
     }
