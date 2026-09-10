@@ -55,7 +55,7 @@ struct mv_tau_update {
 
         const double deltaE {lowest_energy_incoming - lowest_energy_outgoing - ph_energy}; 
 
-        tau_proposed = tau_prev - std::log(1 - std_unif(*rng)*(std::exp(-deltaE*(tau_next - tau_prev))))/deltaE;
+        tau_proposed = tau_prev - std::log(1 - std_unif(*rng)*(1 - std::exp(-deltaE*(tau_next - tau_prev))))/deltaE;
 
         assert(tau_proposed > tau_prev);
         assert(tau_proposed < tau_next);
@@ -85,10 +85,10 @@ struct mv_tau_update {
                 vertex->next->vertex_wf_component *
                 vertex->next->right_component *
                 vertex->prev->left_component
-            ).trace()
+            ).trace() 
         };
 
-        const double numerator {std::exp(-deltaE * vertex->tau) * diagram_weight_proposed};
+        const double numerator {std::exp(-deltaE * vertex->tau) * diagram_weight_proposed * std::exp(-ph_energy*(this->vertex->tau - this->tau_proposed))};
         const double denominator {std::exp(-deltaE * tau_proposed) * diagram_weight_current};
 
         return (numerator/denominator);
@@ -103,6 +103,8 @@ struct mv_tau_update {
 
         weight::LKMatrix::computeRightSide(this->cfg->diagram_head, this->vertex->next);
         weight::LKMatrix::computeLeftSide(this->cfg->diagram_tail, this->vertex->prev);
+
+        std::abs(this->vertex->type) % 2 == 1 ? this->vertex->computeInternalPhPropAction() : this->vertex->computeExternalPhPropAction(this->cfg->diagram_tail->tau);
     }
 };
 
