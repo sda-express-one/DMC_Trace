@@ -5,6 +5,7 @@
 #include <array>
 #include "../vertex.hpp"
 #include "../vertex_manager.hpp"
+#include "../phonon_manager.hpp"
 
 struct updates_cfg {
     Vertex * vertex_pool {nullptr}; // base of the new[]-allocated pool, kept only for cleanup
@@ -14,6 +15,7 @@ struct updates_cfg {
 
     VertexPointerManager * internal_ph_manager {nullptr};
     VertexPointerManager * external_ph_manager {nullptr};
+    PhononModeManager * phonon_mode_manager {nullptr};
 
     const int max_order_int {0};
     const int max_order_ext {0};
@@ -28,7 +30,8 @@ struct updates_cfg {
             double tau_max = 50.0,
             double chem_pot = -1.0,
             VertexPointerManager * internal_ph_manager = nullptr,
-            VertexPointerManager * external_ph_manager = nullptr
+            VertexPointerManager * external_ph_manager = nullptr,
+            PhononModeManager * phonon_mode_manager = nullptr
         );
     ~updates_cfg();
 

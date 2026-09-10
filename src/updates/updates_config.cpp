@@ -6,18 +6,21 @@ updates_cfg::updates_cfg(
     double tau_max, 
     double chem_pot, 
     VertexPointerManager * internal_ph_manager,
-    VertexPointerManager * external_ph_manager
-    ) : 
-        tau_max(tau_max), 
-        chem_pot(chem_pot), 
-        internal_ph_manager(internal_ph_manager), 
-        external_ph_manager(external_ph_manager), 
+    VertexPointerManager * external_ph_manager,
+    PhononModeManager * phonon_mode_manager
+    ) :
+        tau_max(tau_max),
+        chem_pot(chem_pot),
+        internal_ph_manager(internal_ph_manager),
+        external_ph_manager(external_ph_manager),
+        phonon_mode_manager(phonon_mode_manager),
         max_order_int(internal_ph_manager->max_length),
         max_order_ext(external_ph_manager->max_length)
 {
     assert(this->chem_pot < 0);
     assert(internal_ph_manager != nullptr);
     assert(external_ph_manager != nullptr);
+    assert(phonon_mode_manager != nullptr);
 
     const int max_vertices {max_order_int + max_order_ext + 2};
     assert(max_vertices >= 2);
@@ -56,6 +59,7 @@ updates_cfg::updates_cfg(updates_cfg&& other) noexcept :
     diagram_tail(other.diagram_tail),
     internal_ph_manager(other.internal_ph_manager),
     external_ph_manager(other.external_ph_manager),
+    phonon_mode_manager(other.phonon_mode_manager),
     max_order_int(other.max_order_int),
     max_order_ext(other.max_order_ext),
     tau_max(other.tau_max),
@@ -67,4 +71,5 @@ updates_cfg::updates_cfg(updates_cfg&& other) noexcept :
     other.diagram_tail = nullptr;
     other.internal_ph_manager = nullptr;
     other.external_ph_manager = nullptr;
+    other.phonon_mode_manager = nullptr;
 }
