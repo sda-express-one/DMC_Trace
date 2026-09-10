@@ -1,0 +1,35 @@
+# ignore executables and linking files
+*.exe
+*.o
+
+# ignore output and log files
+*.out
+*.e
+*.log
+
+# ignore text files
+*.txt
+!CMakeLists.txt
+
+# ignore images
+*.jpg
+*.png
+
+# ignore scripts
+*.sh
+*.bat
+
+# ignore folders
+build
+bin
+include/diagramc/tmp
+literature
+
+# ignore python scripts
+*.py
+
+# ignore jupyter notebooks
+*.ipynb
+
+# ignore .h5 files
+*.h5
