@@ -1,12 +1,14 @@
 #ifndef WEIGHT_COMPUTATION_HPP
 #define WEIGHT_COMPUTATION_HPP
 
+#include <algorithm>
 #include <array>
 #include <Eigen/Core>
 #include <Eigen/src/Core/util/XprHelper.h>
 #include <Eigen/LU>
 #include <Eigen/Eigenvalues>
 #include <cassert>
+#include <limits>
 #include "vertex.hpp"
 #include "utils/numerical.hpp"
 
@@ -27,7 +29,11 @@ namespace weight {
             std::array<int, 3> position {0, 1, 2};
             std::array<int, 3> sign {1, 1, 1};
         };
-
+        
+        // A_LK > 0
+        // B_LK > 0
+        // C < A + B
+        // C > -1/2 A - B
         inline static double A_LK {1.};
         inline static double B_LK {1.};
         inline static double C_LK {0.};
@@ -38,73 +44,18 @@ namespace weight {
             weight::LKMatrix::C_LK = C_LK;
         }
 
-        inline choice selectionRulesLK(const double kx, const double ky, const double kz){
-            // decision container
-            choice eigenv_gauge;
+        inline choice selectionRulesLK(const std::array<double, 3> k){
+            choice eigenv_gauge; // position starts at the identity {0, 1, 2}
 
-            if(std::abs(kx) >= std::abs(kz)){
-                if(std::abs(kx) >= std::abs(ky)){
-                    if(std::abs(ky) >= std::abs(kz)){
-                        eigenv_gauge.position[0] = 0;
-                        eigenv_gauge.position[1] = 1;
-                        eigenv_gauge.position[2] = 2;
+            // sort axis indices by |k| descending; stable_sort keeps the lower original
+            // index first on an exact tie, matching the previous >= branch cascade
+            std::stable_sort(eigenv_gauge.position.begin(), eigenv_gauge.position.end(),
+                              [&k](int a, int b){ return std::abs(k[a]) > std::abs(k[b]); });
 
-                        if(kx < 0){eigenv_gauge.sign[0] = -1;}
-                        if(ky < 0){eigenv_gauge.sign[1] = -1;}
-                        if(kz < 0){eigenv_gauge.sign[2] = -1;}
-                    }
-                    else{
-                        eigenv_gauge.position[0] = 0;
-                        eigenv_gauge.position[1] = 2;
-                        eigenv_gauge.position[2] = 1;
-
-                        if(kx < 0){eigenv_gauge.sign[0] = -1;}
-                        if(kz < 0){eigenv_gauge.sign[1] = -1;}
-                        if(ky < 0){eigenv_gauge.sign[2] = -1;}
-                    }
-                }
-                else{
-                    eigenv_gauge.position[0] = 1;
-                    eigenv_gauge.position[1] = 0;
-                    eigenv_gauge.position[2] = 2;
-    
-                    if(ky < 0){eigenv_gauge.sign[0] = -1;}
-                    if(kx < 0){eigenv_gauge.sign[1] = -1;}
-                    if(kz < 0){eigenv_gauge.sign[2] = -1;}
-                }
+            for(int i = 0; i < 3; ++i){
+                if(k[eigenv_gauge.position[i]] < 0){ eigenv_gauge.sign[i] = -1; }
             }
-            else{
-                if(std::abs(ky) >= std::abs(kz)){
-                    eigenv_gauge.position[0] = 1;
-                    eigenv_gauge.position[1] = 2;
-                    eigenv_gauge.position[2] = 0;
 
-                    if(ky < 0){eigenv_gauge.sign[0] = -1;}
-                    if(kz < 0){eigenv_gauge.sign[1] = -1;}
-                    if(kx < 0){eigenv_gauge.sign[2] = -1;}
-                }
-                else{
-                    if(std::abs(kx) >= std::abs(ky)){
-                        eigenv_gauge.position[0] = 2;
-                        eigenv_gauge.position[1] = 0;
-                        eigenv_gauge.position[2] = 1;
-
-                        if(kz < 0){eigenv_gauge.sign[0] = -1;}
-                        if(kx < 0){eigenv_gauge.sign[1] = -1;}
-                        if(ky < 0){eigenv_gauge.sign[2] = -1;}
-                    }
-                    else{
-                        eigenv_gauge.position[0] = 2;
-                        eigenv_gauge.position[1] = 1;
-                        eigenv_gauge.position[2] = 0;
-
-                        if(kz < 0){eigenv_gauge.sign[0] = -1;}
-                        if(ky < 0){eigenv_gauge.sign[1] = -1;}
-                        if(kx < 0){eigenv_gauge.sign[2] = -1;}
-                    }
-                }
-            }
-    
             return eigenv_gauge;
         };
 
@@ -126,7 +77,7 @@ namespace weight {
             double k_vector[3] {k[0]/k_modulus, k[1]/k_modulus, k[2]/k_modulus};
             double k_vector_temp[3] {k[0]/k_modulus, k[1]/k_modulus, k[2]/k_modulus};
 
-            choice eigenv_gauge = selectionRulesLK(k[0], k[1], k[2]); // cast k-values into IBZ
+            choice eigenv_gauge = selectionRulesLK(k); // cast k-values into IBZ
 
             k_vector[0] = std::abs(k_vector_temp[eigenv_gauge.position[0]]);
             k_vector[1] = std::abs(k_vector_temp[eigenv_gauge.position[1]]);
@@ -142,11 +93,12 @@ namespace weight {
             eigensolver.compute(LK_matrix); // compute eigenvalues and eigenvectors
 
                 if(eigensolver.info() != 0){
-                result << -1, -1, -1,
-                           0,  0,  0,
-                           0,  0,  0,
-                           0,  0,  0;
-                return result; // return error values
+                const double nan {std::numeric_limits<double>::quiet_NaN()};
+                result << nan, nan, nan,
+                          nan, nan, nan,
+                          nan, nan, nan,
+                          nan, nan, nan;
+                return result; // solver failure sentinel (NaN, never a valid eigenvalue)
             }
 
             Eigen::Matrix3d eigenvectors {eigensolver.eigenvectors()}; // eigenvector matrix 
@@ -207,10 +159,10 @@ namespace weight {
 
             Eigen::RowVector3d eigenvalues;
         
-            // LK Hamiltonian undefined for k=(0,0,0)
+            // free propagator: same well-defined degenerate eigenvalues as diagonalizeLKHamiltonian's k=(0,0,0) case
             if(numerical::isEqual(k[0],0) && numerical::isEqual(k[1],0) && numerical::isEqual(k[2],0)){
-                eigenvalues << -1, 1, 1;
-                return eigenvalues; 
+                eigenvalues << -2, 1, 1;
+                return eigenvalues;
             }
     
             double k_modulus {std::sqrt(k[0]*k[0] + k[1]*k[1] + k[2]*k[2])};
@@ -227,8 +179,9 @@ namespace weight {
             eigensolver.compute(LK_matrix, Eigen::EigenvaluesOnly); // compute eigenvalues
 
             if(eigensolver.info() != 0){
-                eigenvalues << -1, 1, 1;
-                return eigenvalues; // return error values
+                const double nan {std::numeric_limits<double>::quiet_NaN()};
+                eigenvalues << nan, nan, nan;
+                return eigenvalues; // solver failure sentinel (NaN, never a valid eigenvalue)
             }
 
             eigenvalues = eigensolver.eigenvalues().transpose(); // eigenvalues row vector (from smallest to largest)
