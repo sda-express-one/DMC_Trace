@@ -74,7 +74,6 @@ double add_int_ph_update::attempt(){
 
         eigensolution_wrapper = weight::LKMatrix::diagonalizeLKHamiltonian(p_fin);
         
-        //current_new_weight.vertex_wf_component = eigensolution_wrapper.block<3,3>(1,1);
         eigenvalues = {eigensolution_wrapper(0,0), eigensolution_wrapper(0,1), eigensolution_wrapper(0,2)};
         current_new_weight.eff_masses = weight::LKMatrix::computeEffMassfromEigenval(eigenvalues);
 
@@ -146,13 +145,27 @@ double add_int_ph_update::attempt(){
         ++i;
     } while (ptr != ptr_two->next);
 
-    Eigen::Matrix3d new_matrix_product {proposed_weights[i].vertex_wf_component}; 
-    for(int j {i-1}; j > -1; --j){
+    // ptr_one keeps its own identity (unlike ptr_two's other end in rm_internal_ph, nothing here
+    // merges it away), but its own leading segment shrinks from [tau_init_v1, tau_end_v1] down to
+    // [tau_init_v1, tau_one] - same (unshifted) momentum, shorter duration, so its cached action is
+    // now stale and has to be recomputed rather than reused or left out of the trace.
+    const std::array<double, 3> ptr_one_energies {ptr_one->electronEnergy()};
+    Eigen::Matrix3d ptr_one_action_new {Eigen::Matrix3d::Identity()};
+    ptr_one_action_new(0,0) = std::exp(-ptr_one_energies[0]*(this->tau_one - tau_init_v1));
+    ptr_one_action_new(1,1) = std::exp(-ptr_one_energies[1]*(this->tau_one - tau_init_v1));
+    ptr_one_action_new(2,2) = std::exp(-ptr_one_energies[2]*(this->tau_one - tau_init_v1));
+
+    // fold every proposed_weights entry's wf*action (including the last one's action, unlike
+    // before) - the chain then needs to be closed out on the right by ptr_two->next (skipping
+    // ptr_two's own now-superseded right_component, whose leading factor is its stale action)
+    // and on the left by ptr_one's own (unchanged wf, newly-recomputed action) leading segment.
+    Eigen::Matrix3d new_matrix_product {Eigen::Matrix3d::Identity()};
+    for(int j {i}; j > -1; --j){
         new_matrix_product = proposed_weights[j].vertex_wf_component * proposed_weights[j].el_prop_action * new_matrix_product;
     }
 
     const double weights_proposed {
-        (new_matrix_product * ptr_two->right_component * ptr_one->left_component).trace() *
+        (new_matrix_product * ptr_two->next->vertex_wf_component * ptr_two->next->right_component * ptr_one->left_component * ptr_one->vertex_wf_component * ptr_one_action_new).trace() *
             Coupling::Strength::compute(w_proposed, ph_mode_energy, ph_mode_diel_response) *
             Coupling::Strength::compute(w_proposed, ph_mode_energy, ph_mode_diel_response) *
             std::exp(-ph_mode_energy*(this->tau_two - this->tau_one))
@@ -171,6 +184,7 @@ double add_int_ph_update::attempt(){
     };
     const double denominator {
         p_A *
+        weights_current *
         std::pow(2.*std::numbers::pi, 3) * 
         std::pow((this->tau_two - this->tau_one)/(2*std::numbers::pi), 1.5) * 
         std::exp(-((w_proposed[0]*w_proposed[0]+w_proposed[1]*w_proposed[1]+w_proposed[2]*w_proposed[2])/2.)*(this->tau_two - this->tau_one))
@@ -225,7 +239,12 @@ void add_int_ph_update::accept(){
     cfg->addVertex(v_two, (ptr_one == ptr_two) ? v_one : ptr_two);
 
     // 4. Fill in the new vertices' own state from the first/last proposed_weights entries.
+    // Both tau's are set before either tau_next is derived from ->next->tau: when
+    // ptr_one == ptr_two, v_one->next is v_two itself, so v_two->tau must already be
+    // correct by the time v_one->tau_next reads it.
     v_one->tau = tau_one;
+    v_two->tau = tau_two;
+
     v_one->tau_next = v_one->next->tau;
     v_one->type = +1; // creation - earlier in tau, per the internal-line convention
     v_one->k = proposed_weights.front().k;
@@ -237,7 +256,6 @@ void add_int_ph_update::accept(){
     v_one->vertex_wf_component = proposed_weights.front().vertex_wf_component;
     v_one->el_prop_action = proposed_weights.front().el_prop_action;
 
-    v_two->tau = tau_two;
     v_two->tau_next = v_two->next->tau;
     v_two->type = -1; // annihilation - later in tau
     v_two->k = proposed_weights.back().k;
