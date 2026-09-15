@@ -1,6 +1,7 @@
 #ifndef ADD_INTERNAL_PH_HPP
 #define ADD_INTERNAL_PH_HPP
 
+#include <array>
 #include <cassert>
 #include <random>
 #include <vector>
@@ -20,6 +21,8 @@ struct add_int_ph_update {
     Vertex* ptr_two {nullptr};
     double tau_one {0.};
     double tau_two {0.};
+    int ph_index {-1};
+    std::array<double, 3> w_proposed {0., 0., 0.};
     std::vector<weight::ProposedVertexWeight> proposed_weights;
 
     add_int_ph_update(updates_cfg * cfg, simplemc::xoshiro256ss * rng)
@@ -46,8 +49,7 @@ struct add_int_ph_update {
 
     double attempt();
 
-    void accept(){}
-    void reject(){}
+    void accept();
 };
 
 #endif // !ADD_INTERNAL_PH_HPP

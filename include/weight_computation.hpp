@@ -15,7 +15,9 @@
 namespace weight {
     struct ProposedVertexWeight {
         std::array<double, 3> k {0., 0., 0.};
+        std::array<double, 3> eff_masses {1., 1., 1.};
         double electron_energy {0.};
+        Eigen::Matrix3d baseWF {Eigen::Matrix3d::Identity()};
         Eigen::Matrix3d el_prop_action {Eigen::Matrix3d::Identity()};
         Eigen::Matrix3d vertex_wf_component {Eigen::Matrix3d::Identity()};
     };
