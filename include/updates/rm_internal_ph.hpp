@@ -5,6 +5,7 @@
 #include <vector>
 #include <simplemc/random/xoshiro256.hpp>
 #include "../vertex.hpp"
+#include "../vertex_manager.hpp"
 #include "../weight_computation.hpp"
 #include "updates_config.hpp"
 
@@ -17,9 +18,6 @@ struct rm_int_ph_update {
                                              // for removeVertexPointers() without re-scanning the pool
     Vertex * ptr_one {nullptr};
     Vertex * ptr_two {nullptr};
-    //std::array<double, 3> w_reject
-    //double tau_one {0.};
-    //double tau_two {0.};
 
     std::vector<weight::ProposedVertexWeight> proposed_weights;
 
