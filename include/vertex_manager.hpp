@@ -54,6 +54,11 @@ struct VertexPointerManager {
         ptr_vertex_pool[position_one].conjugated = &ptr_vertex_pool[position_two];
         ptr_vertex_pool[position_two].conjugated = &ptr_vertex_pool[position_one];
 
+        // Vertex::index mirrors .position on the other side, so a bare Vertex* can find its own
+        // slot in O(1) via findPointer() without needing to already hold a VertexPointer*.
+        vertex_one->index = position_one;
+        vertex_two->index = position_two;
+
         current_length += 2;
     }
 
@@ -74,6 +79,11 @@ struct VertexPointerManager {
 
             ptr_vertex_pool[position_one].conjugated = &ptr_vertex_pool[position_two];
             ptr_vertex_pool[position_two].conjugated = &ptr_vertex_pool[position_one];
+
+            // the two vertices just swapped into position_one/position_two need their own
+            // index updated to match, same as .conjugated above.
+            ptr_vertex_pool[position_one].linked_vertex->index = position_one;
+            ptr_vertex_pool[position_two].linked_vertex->index = position_two;
         }
 
         ptr_vertex_pool[current_length - 1].linked_vertex = nullptr;
@@ -92,6 +102,18 @@ struct VertexPointerManager {
     Vertex * selectVertex(int position) const {
         assert(position < current_length);
         return ptr_vertex_pool[position].linked_vertex;
+    }
+
+    // O(1) reverse lookup: given a Vertex known to be registered in *this* manager, find its
+    // own VertexPointer slot via the index addVertexPointers/removeVertexPointers maintain on
+    // it. If you already hold a VertexPointer* for the pair, prefer its .conjugated instead -
+    // this is for when only a bare Vertex* is available (e.g. from ->conj_vertex or a diagram
+    // walk).
+    VertexPointer * findPointer(Vertex * vertex) const {
+        assert(vertex != nullptr);
+        assert(vertex->index >= 0 && vertex->index < current_length);
+        assert(ptr_vertex_pool[vertex->index].linked_vertex == vertex);
+        return &ptr_vertex_pool[vertex->index];
     }
 
     VertexPointer * chooseOutgoingVertex() {

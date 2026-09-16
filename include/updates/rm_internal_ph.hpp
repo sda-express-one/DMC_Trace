@@ -5,7 +5,6 @@
 #include <vector>
 #include <simplemc/random/xoshiro256.hpp>
 #include "../vertex.hpp"
-#include "../vertex_manager.hpp"
 #include "../weight_computation.hpp"
 #include "updates_config.hpp"
 
@@ -14,8 +13,6 @@ struct rm_int_ph_update {
     updates_cfg * const cfg {nullptr};
 
     simplemc::xoshiro256ss * rng {nullptr};
-    VertexPointer * ptr_one_slot {nullptr}; // kept so accept() can reach ptr_one_slot->conjugated
-                                             // for removeVertexPointers() without re-scanning the pool
     Vertex * ptr_one {nullptr};
     Vertex * ptr_two {nullptr};
 

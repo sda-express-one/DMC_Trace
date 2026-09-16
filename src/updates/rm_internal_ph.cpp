@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <Eigen/Core>
+#include "../../include/vertex_manager.hpp"
 #include "../../include/weight_computation.hpp"
 
 double rm_int_ph_update::attempt(){
@@ -15,8 +16,7 @@ double rm_int_ph_update::attempt(){
     }
 
     // choose random vertex pointer
-    ptr_one_slot = cfg->internal_ph_manager->chooseOutgoingVertex();
-    ptr_one = ptr_one_slot->linked_vertex;
+    ptr_one = cfg->internal_ph_manager->chooseOutgoingVertex()->linked_vertex;
     assert(ptr_one != nullptr);
 
     ptr_two = ptr_one->conj_vertex;
@@ -197,7 +197,9 @@ void rm_int_ph_update::accept(){
         last_survivor = ptr;
     }
 
-    // unregister the line: ptr_one_slot->conjugated is ptr_two's own slot, no pool scan needed.
+    // unregister the line: findPointer() gives ptr_one's own slot in O(1) from its maintained
+    // index, and .conjugated gives ptr_two's slot from there - no pool scan needed.
+    VertexPointer * ptr_one_slot {cfg->internal_ph_manager->findPointer(ptr_one)};
     VertexPointer * ptr_two_slot {ptr_one_slot->conjugated};
     assert(ptr_two_slot != nullptr);
     cfg->internal_ph_manager->removeVertexPointers(*ptr_one_slot, *ptr_two_slot);
