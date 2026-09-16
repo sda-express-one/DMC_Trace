@@ -116,6 +116,12 @@ struct VertexPointerManager {
         return &ptr_vertex_pool[vertex->index];
     }
 
+    VertexPointer * chooseAnyVertex() {
+        assert(current_length > 0);
+        std::uniform_int_distribution<int> select {0, current_length - 1};
+        return &ptr_vertex_pool[select(*rng)];
+    }
+
     VertexPointer * chooseOutgoingVertex() {
         int type {0};
         int position {-1};

@@ -1,12 +1,13 @@
 #ifndef SWP_PH_HPP
 #define SWP_PH_HPP
 
+#include <array>
 #include <cassert>
 #include <random>
 #include <simplemc/random/xoshiro256.hpp>
 #include "updates_config.hpp"
 #include "../vertex.hpp"
-#include "../vertex_manager.hpp"
+#include "../weight_computation.hpp"
 
 
 struct swp_ph_update {
@@ -14,11 +15,12 @@ struct swp_ph_update {
 
     simplemc::xoshiro256ss * rng {nullptr};
     mutable std::uniform_real_distribution<double> std_unif {0.,1.};
-
-    VertexPointer * ptr_one_slot {nullptr};
-    
+ 
     Vertex * ptr_one {nullptr};
     Vertex * ptr_two {nullptr};
+    std::array<double, 3> k_new {0., 0., 0.};
+    std::array<weight::ProposedVertexWeight, 2> proposed_weights;
+
 
 
     swp_ph_update(updates_cfg * cfg, simplemc::xoshiro256ss * rng)
