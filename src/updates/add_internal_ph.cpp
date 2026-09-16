@@ -45,7 +45,12 @@ double add_int_ph_update::attempt(){
 
     this->tau_two = this->tau_one - std::log(1 - std_unif(*rng))/ph_mode_energy;
 
-    if(tau_two > this->cfg->tau_max){
+    // bounded against the diagram's current extent, not the fixed tau_max ceiling: tau_max only
+    // bounds where diagram_tail is itself allowed to reach (enforced in chg_tau_update), and
+    // diagram_tail->tau is frequently much smaller than that - a phonon vertex can't legally sit
+    // beyond where the worldline currently ends, and findPositionFromLeft would walk off the end
+    // of the diagram (UB in release builds) if it tried.
+    if(tau_two > this->cfg->diagram_tail->tau){
         return -1;
     }
     
