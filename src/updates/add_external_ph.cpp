@@ -507,3 +507,229 @@ double add_ext_ph_update::attempt(){
         return numerator/denominator;
     }
 }
+
+void add_ext_ph_update::accept(){
+    const double ph_mode_energy {cfg->phonon_mode_manager->phonon_mode_pool[ph_index].phonon_energy};
+    const double ph_mode_diel_response {cfg->phonon_mode_manager->phonon_mode_pool[ph_index].diel_response};
+
+    // drawn before touching any linkage, so nothing here can leave the diagram half-mutated.
+    Vertex * v_ann {cfg->drawVertexFromPool()};
+    Vertex * v_creation {cfg->drawVertexFromPool()};
+
+    if (incoming_before_outgoing) {
+        // === case 1: annihilation (tau_one) before creation (tau_two) ===
+
+        // 1. commit the shifted state onto every EXISTING vertex from diagram_head through
+        //    ptr_one. proposed_weights_beginning holds one entry per such vertex, plus a final
+        //    ann_weight entry (NOT an existing vertex - v_ann's own state, filled in below).
+        {
+            Vertex * ptr {cfg->diagram_head};
+            std::size_t idx {0};
+            while (ptr != ptr_one) {
+                ptr->k = proposed_weights_beginning[idx].k;
+                ptr->eff_masses = proposed_weights_beginning[idx].eff_masses;
+                ptr->baseWF = proposed_weights_beginning[idx].baseWF;
+                ptr->vertex_wf_component = proposed_weights_beginning[idx].vertex_wf_component;
+                ptr->el_prop_action = proposed_weights_beginning[idx].el_prop_action;
+                ptr = ptr->next;
+                ++idx;
+            }
+            // ptr is now ptr_one; proposed_weights_beginning[idx] is its own shifted, shortened piece.
+            ptr_one->k = proposed_weights_beginning[idx].k;
+            ptr_one->eff_masses = proposed_weights_beginning[idx].eff_masses;
+            ptr_one->baseWF = proposed_weights_beginning[idx].baseWF;
+            ptr_one->vertex_wf_component = proposed_weights_beginning[idx].vertex_wf_component;
+            ptr_one->el_prop_action = proposed_weights_beginning[idx].el_prop_action;
+            ptr_one->tau_next = tau_one;
+        }
+
+        // 2. commit the unshifted state onto ptr_two, only if it differs from ptr_one - if they're
+        //    the same vertex, it was already fully handled above (tau_next included), and the
+        //    [tau_one, tau_two] stretch is entirely covered by ann_weight instead.
+        std::size_t end_idx {0};
+        if (ptr_two != ptr_one) {
+            // ptr_two's real overlap is unchanged - proposed_weights_end[0]'s wf was only ever an
+            // Identity placeholder, never ptr_two's real overlap (mirrors rm_internal_ph.cpp).
+            ptr_two->k = proposed_weights_end[0].k;
+            ptr_two->eff_masses = proposed_weights_end[0].eff_masses;
+            ptr_two->baseWF = proposed_weights_end[0].baseWF;
+            ptr_two->el_prop_action = proposed_weights_end[0].el_prop_action;
+            ptr_two->tau_next = tau_two;
+            end_idx = 1;
+        }
+
+        // 3. commit the shifted state onto every EXISTING vertex from ptr_two->next through
+        //    diagram_tail->prev - proposed_weights_end[end_idx+1 ..] (index end_idx itself is
+        //    creation_weight, v_creation's own state, filled in below).
+        {
+            Vertex * ptr {ptr_two->next};
+            std::size_t idx {end_idx + 1};
+            while (ptr != cfg->diagram_tail) {
+                ptr->k = proposed_weights_end[idx].k;
+                ptr->eff_masses = proposed_weights_end[idx].eff_masses;
+                ptr->baseWF = proposed_weights_end[idx].baseWF;
+                ptr->vertex_wf_component = proposed_weights_end[idx].vertex_wf_component;
+                ptr->el_prop_action = proposed_weights_end[idx].el_prop_action;
+                ptr = ptr->next;
+                ++idx;
+            }
+        }
+
+        // 4. splice the two new vertices in. If ptr_one == ptr_two, v_creation must go right
+        //    after v_ann (not after ptr_two again, which is the same node as ptr_one).
+        cfg->addVertex(v_ann, ptr_one);
+        cfg->addVertex(v_creation, (ptr_one == ptr_two) ? v_ann : ptr_two);
+
+        // 5. fill in the new vertices' own state. Both tau's are set before either tau_next is
+        //    derived from ->next->tau: when ptr_one == ptr_two, v_ann->next is v_creation itself,
+        //    so v_creation->tau must already be correct by the time v_ann->tau_next reads it.
+        v_ann->tau = tau_one;
+        v_creation->tau = tau_two;
+
+        v_ann->tau_next = v_ann->next->tau;
+        v_ann->type = -2; // annihilation (external, incoming)
+        const weight::ProposedVertexWeight & ann_w {proposed_weights_beginning.back()};
+        v_ann->k = ann_w.k;
+        v_ann->eff_masses = ann_w.eff_masses;
+        v_ann->baseWF = ann_w.baseWF;
+        v_ann->vertex_wf_component = ann_w.vertex_wf_component;
+        v_ann->el_prop_action = ann_w.el_prop_action;
+
+        v_creation->tau_next = v_creation->next->tau;
+        v_creation->type = +2; // creation (external, outgoing)
+        const weight::ProposedVertexWeight & creation_w {proposed_weights_end[end_idx]};
+        v_creation->k = creation_w.k;
+        v_creation->eff_masses = creation_w.eff_masses;
+        v_creation->baseWF = creation_w.baseWF;
+        v_creation->vertex_wf_component = creation_w.vertex_wf_component;
+        v_creation->el_prop_action = creation_w.el_prop_action;
+    }
+    else {
+        // === case 2: creation (tau_two) before annihilation (tau_one) ===
+
+        // 1. commit the single-shifted state onto every EXISTING vertex from diagram_head through
+        //    ptr_two - proposed_weights_beginning holds exactly one entry per such vertex (no new
+        //    vertex mixed in here, unlike case 1's beginning walk).
+        {
+            Vertex * ptr {cfg->diagram_head};
+            std::size_t idx {0};
+            while (ptr != ptr_two) {
+                ptr->k = proposed_weights_beginning[idx].k;
+                ptr->eff_masses = proposed_weights_beginning[idx].eff_masses;
+                ptr->baseWF = proposed_weights_beginning[idx].baseWF;
+                ptr->vertex_wf_component = proposed_weights_beginning[idx].vertex_wf_component;
+                ptr->el_prop_action = proposed_weights_beginning[idx].el_prop_action;
+                ptr = ptr->next;
+                ++idx;
+            }
+            // ptr is now ptr_two; proposed_weights_beginning[idx] is its own shifted, shortened piece.
+            ptr_two->k = proposed_weights_beginning[idx].k;
+            ptr_two->eff_masses = proposed_weights_beginning[idx].eff_masses;
+            ptr_two->baseWF = proposed_weights_beginning[idx].baseWF;
+            ptr_two->vertex_wf_component = proposed_weights_beginning[idx].vertex_wf_component;
+            ptr_two->el_prop_action = proposed_weights_beginning[idx].el_prop_action;
+            ptr_two->tau_next = tau_two;
+        }
+
+        // 2. commit the double-shifted state onto every EXISTING interior vertex strictly between
+        //    the two new vertices, and onto ptr_one's own (shortened) piece - only when there IS an
+        //    interior stretch; proposed_weights_middle otherwise holds only creation_weight (index
+        //    0, v_creation's own state, filled in below) and ptr_two/ptr_one (the same node here)
+        //    was already fully handled in step 1 above.
+        const bool unshared_segment {ptr_one != ptr_two};
+        if (unshared_segment) {
+            Vertex * ptr {ptr_two->next};
+            std::size_t idx {1};
+            while (ptr != ptr_one) {
+                ptr->k = proposed_weights_middle[idx].k;
+                ptr->eff_masses = proposed_weights_middle[idx].eff_masses;
+                ptr->baseWF = proposed_weights_middle[idx].baseWF;
+                ptr->vertex_wf_component = proposed_weights_middle[idx].vertex_wf_component;
+                ptr->el_prop_action = proposed_weights_middle[idx].el_prop_action;
+                ptr = ptr->next;
+                ++idx;
+            }
+            // ptr is now ptr_one; proposed_weights_middle[idx] (== .size()-1) is its own shifted,
+            // shortened piece.
+            ptr_one->k = proposed_weights_middle[idx].k;
+            ptr_one->eff_masses = proposed_weights_middle[idx].eff_masses;
+            ptr_one->baseWF = proposed_weights_middle[idx].baseWF;
+            ptr_one->vertex_wf_component = proposed_weights_middle[idx].vertex_wf_component;
+            ptr_one->el_prop_action = proposed_weights_middle[idx].el_prop_action;
+            ptr_one->tau_next = tau_one;
+        }
+
+        // 3. commit the single-shifted state onto every EXISTING vertex from ptr_one->next through
+        //    diagram_tail->prev - proposed_weights_end[1..] (index 0 is ann_weight, v_ann's own
+        //    state, filled in below).
+        {
+            Vertex * ptr {ptr_one->next};
+            std::size_t idx {1};
+            while (ptr != cfg->diagram_tail) {
+                ptr->k = proposed_weights_end[idx].k;
+                ptr->eff_masses = proposed_weights_end[idx].eff_masses;
+                ptr->baseWF = proposed_weights_end[idx].baseWF;
+                ptr->vertex_wf_component = proposed_weights_end[idx].vertex_wf_component;
+                ptr->el_prop_action = proposed_weights_end[idx].el_prop_action;
+                ptr = ptr->next;
+                ++idx;
+            }
+        }
+
+        // 4. splice the two new vertices in. If ptr_one == ptr_two, v_ann must go right after
+        //    v_creation (not after ptr_one again, which is the same node as ptr_two).
+        cfg->addVertex(v_creation, ptr_two);
+        cfg->addVertex(v_ann, unshared_segment ? ptr_one : v_creation);
+
+        // 5. fill in the new vertices' own state. Both tau's are set before either tau_next is
+        //    derived from ->next->tau: when ptr_one == ptr_two, v_creation->next is v_ann itself,
+        //    so v_ann->tau must already be correct by the time v_creation->tau_next reads it.
+        v_creation->tau = tau_two;
+        v_ann->tau = tau_one;
+
+        v_creation->tau_next = v_creation->next->tau;
+        v_creation->type = +2; // creation (external, outgoing)
+        const weight::ProposedVertexWeight & creation_w {proposed_weights_middle.front()};
+        v_creation->k = creation_w.k;
+        v_creation->eff_masses = creation_w.eff_masses;
+        v_creation->baseWF = creation_w.baseWF;
+        v_creation->vertex_wf_component = creation_w.vertex_wf_component;
+        v_creation->el_prop_action = creation_w.el_prop_action;
+
+        v_ann->tau_next = v_ann->next->tau;
+        v_ann->type = -2; // annihilation (external, incoming)
+        const weight::ProposedVertexWeight & ann_w {proposed_weights_end.front()};
+        v_ann->k = ann_w.k;
+        v_ann->eff_masses = ann_w.eff_masses;
+        v_ann->baseWF = ann_w.baseWF;
+        v_ann->vertex_wf_component = ann_w.vertex_wf_component;
+        v_ann->el_prop_action = ann_w.el_prop_action;
+    }
+
+    // shared across both cases: the new line's phonon-specific state, registration, and cache
+    // refresh. Both v_ann and v_creation carry the same w (the momentum transferred by this line).
+    v_ann->w = w_proposed;
+    v_creation->w = w_proposed;
+    v_ann->ph_energy = ph_mode_energy;
+    v_creation->ph_energy = ph_mode_energy;
+    v_ann->diel_response = ph_mode_diel_response;
+    v_creation->diel_response = ph_mode_diel_response;
+
+    v_ann->conj_vertex = v_creation;
+    v_creation->conj_vertex = v_ann;
+
+    v_ann->vertexStrength();
+    v_creation->vertexStrength();
+
+    cfg->external_ph_manager->addVertexPointers(v_creation, v_ann);
+    // sets ph_action on both v_creation and v_ann (via conj_vertex); the wrap formula is the same
+    // regardless of case (case 2's tau_interval exceeds current_tau_length, correctly reflecting
+    // the doubled middle stretch).
+    v_creation->computeExternalPhPropAction(cfg->current_tau_length);
+
+    // unlike add_internal_ph/rm_internal_ph, both cases here touch vertices at BOTH ends of the
+    // diagram (and, in case 2, everything in between too) - there's no untouched prefix or suffix
+    // to bound the recomputation to, so the whole diagram's cache needs refreshing.
+    weight::LKMatrix::computeRightSide(cfg->diagram_head, cfg->diagram_tail);
+    weight::LKMatrix::computeLeftSide(cfg->diagram_tail, cfg->diagram_head);
+}
