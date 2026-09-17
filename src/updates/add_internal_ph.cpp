@@ -116,7 +116,7 @@ double add_int_ph_update::attempt(){
         }
         else if(ptr == ptr_two){
             current_new_weight.baseWF = eigensolution_wrapper.block<3,3>(1,0);
-            current_new_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(proposed_weights[i-1].baseWF, current_new_weight.baseWF);
+            current_new_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(proposed_weights.back().baseWF, current_new_weight.baseWF);
             
             current_new_weight.el_prop_action(0,0) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[0])*(this->tau_two - ptr_two->tau)); 
             current_new_weight.el_prop_action(1,1) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[1])*(this->tau_two - ptr_two->tau));
@@ -137,7 +137,7 @@ double add_int_ph_update::attempt(){
         }
         else{
             current_new_weight.baseWF = eigensolution_wrapper.block<3,3>(1,0);
-            current_new_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(proposed_weights[i-1].baseWF, current_new_weight.baseWF);
+            current_new_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(proposed_weights.back().baseWF, current_new_weight.baseWF);
             
             current_new_weight.el_prop_action(0,0) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[0])*(ptr->tau_next - ptr->tau)); 
             current_new_weight.el_prop_action(1,1) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[1])*(ptr->tau_next - ptr->tau));
@@ -190,6 +190,7 @@ double add_int_ph_update::attempt(){
     const double denominator {
         p_A *
         weights_current *
+        ph_mode_energy * std::exp(-ph_mode_energy*(tau_two - tau_one)) *
         std::pow(2.*std::numbers::pi, 3) * 
         std::pow((this->tau_two - this->tau_one)/(2*std::numbers::pi), 1.5) * 
         std::exp(-((w_proposed[0]*w_proposed[0]+w_proposed[1]*w_proposed[1]+w_proposed[2]*w_proposed[2])/2.)*(this->tau_two - this->tau_one))
