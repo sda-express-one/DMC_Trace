@@ -5,7 +5,7 @@
 #include <cassert>
 #include <cmath>
 #include <Eigen/Core>
-#include "vertex_coupling.hpp"
+#include "../comp_method/vertex_coupling.hpp"
 
 
 struct Vertex {

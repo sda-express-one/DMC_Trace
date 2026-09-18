@@ -4,12 +4,12 @@
 #include <cassert>
 #include <random>
 #include <simplemc/random/xoshiro256.hpp>
-#include "../vertex.hpp"
-#include "updates_config.hpp"
-#include "../weight_computation.hpp"
+#include "../diagram/vertex.hpp"
+#include "../diagram/diagram_config.hpp"
+#include "../comp_method/weight_computation.hpp"
 
 struct mv_tau_update {
-    updates_cfg * cfg;
+    diagram_cfg * cfg;
     simplemc::xoshiro256ss* rng;
     mutable std::uniform_real_distribution<double> std_unif {0.,1.};
     Vertex * vertex {nullptr};

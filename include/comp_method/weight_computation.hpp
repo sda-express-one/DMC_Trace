@@ -9,8 +9,8 @@
 #include <Eigen/Eigenvalues>
 #include <cassert>
 #include <limits>
-#include "vertex.hpp"
-#include "utils/numerical.hpp"
+#include "../diagram/vertex.hpp"
+#include "../utils/numerical.hpp"
 
 namespace weight {
     struct ProposedVertexWeight {

@@ -3,11 +3,11 @@
 
 #include <cassert>
 #include <array>
-#include "../vertex.hpp"
-#include "../vertex_manager.hpp"
-#include "../phonon_manager.hpp"
+#include "vertex.hpp"
+#include "vertex_manager.hpp"
+#include "phonon_manager.hpp"
 
-struct updates_cfg {
+struct diagram_cfg {
     Vertex * vertex_pool {nullptr}; // base of the new[]-allocated pool, kept only for cleanup
     Vertex * free_stack {nullptr};  // current head of the still-unused portion of the pool
     Vertex * diagram_head {nullptr};
@@ -27,7 +27,7 @@ struct updates_cfg {
 
     double current_tau_length {1.};
 
-    updates_cfg(
+    diagram_cfg(
             std::array<double, 3> k_init = {0, 0, 0},
             double tau_max = 50.0,
             double chem_pot = -1.0,
@@ -35,17 +35,17 @@ struct updates_cfg {
             VertexPointerManager * external_ph_manager = nullptr,
             PhononModeManager * phonon_mode_manager = nullptr
         );
-    ~updates_cfg();
+    ~diagram_cfg();
 
     // vertex_pool is uniquely owned (delete[]'d in the destructor), so copying would
     // double-free; only moving it out is allowed. max_order_int/max_order_ext/tau_max/
     // chem_pot are const, so a move-assignment operator can't reinitialize them - only
     // move-construction is meaningful here.
-    updates_cfg(const updates_cfg&) = delete;
-    updates_cfg& operator=(const updates_cfg&) = delete;
-    updates_cfg& operator=(updates_cfg&&) = delete;
+    diagram_cfg(const diagram_cfg&) = delete;
+    diagram_cfg& operator=(const diagram_cfg&) = delete;
+    diagram_cfg& operator=(diagram_cfg&&) = delete;
 
-    updates_cfg(updates_cfg&& other) noexcept;
+    diagram_cfg(diagram_cfg&& other) noexcept;
 
     Vertex * findPositionFromLeft(Vertex * left_most, const double tau_pos_to_find){
         assert(left_most !=  nullptr);

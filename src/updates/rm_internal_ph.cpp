@@ -5,8 +5,8 @@
 #include <cmath>
 #include <cstddef>
 #include <Eigen/Core>
-#include "../../include/vertex_manager.hpp"
-#include "../../include/weight_computation.hpp"
+#include "../../include/diagram/vertex_manager.hpp"
+#include "../../include/comp_method/weight_computation.hpp"
 
 double rm_int_ph_update::attempt(){
     proposed_weights.clear();

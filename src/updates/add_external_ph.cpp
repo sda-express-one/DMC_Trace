@@ -6,7 +6,7 @@
 #include <Eigen/Core>
 #include <Eigen/SVD>
 #include "../../include/utils/numerical.hpp"
-#include "../../include/vertex.hpp"
+#include "../../include/diagram/vertex.hpp"
 
 double add_ext_ph_update::attempt(){
     proposed_weights_beginning.clear();

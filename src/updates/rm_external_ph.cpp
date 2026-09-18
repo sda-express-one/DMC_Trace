@@ -6,8 +6,8 @@
 #include <Eigen/Core>
 #include <Eigen/SVD>
 #include "../../include/utils/numerical.hpp"
-#include "../../include/vertex.hpp"
-#include "../../include/vertex_manager.hpp"
+#include "../../include/diagram/vertex.hpp"
+#include "../../include/diagram/vertex_manager.hpp"
 
 double rm_ext_ph_update::attempt(){
     proposed_weights_beginning.clear();

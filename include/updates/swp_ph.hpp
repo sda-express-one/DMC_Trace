@@ -5,13 +5,13 @@
 #include <cassert>
 #include <random>
 #include <simplemc/random/xoshiro256.hpp>
-#include "updates_config.hpp"
-#include "../vertex.hpp"
-#include "../weight_computation.hpp"
+#include "../diagram/diagram_config.hpp"
+#include "../diagram/vertex.hpp"
+#include "../comp_method/weight_computation.hpp"
 
 
 struct swp_ph_update {
-    updates_cfg * const cfg {nullptr};
+    diagram_cfg * const cfg {nullptr};
 
     simplemc::xoshiro256ss * rng {nullptr};
     mutable std::uniform_real_distribution<double> std_unif {0.,1.};
@@ -23,7 +23,7 @@ struct swp_ph_update {
 
 
 
-    swp_ph_update(updates_cfg * cfg, simplemc::xoshiro256ss * rng)
+    swp_ph_update(diagram_cfg * cfg, simplemc::xoshiro256ss * rng)
         : cfg(cfg), rng(rng)
     {
         assert(cfg != nullptr);

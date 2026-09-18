@@ -3,9 +3,9 @@
 #include <cstddef>
 #include <random>
 #include "../../include/updates/add_internal_ph.hpp"
-#include "../../include/vertex_coupling.hpp"
-#include "../../include/weight_computation.hpp"
-#include "../../include/phonon_manager.hpp"
+#include "../../include/comp_method/vertex_coupling.hpp"
+#include "../../include/comp_method/weight_computation.hpp"
+#include "../../include/diagram/phonon_manager.hpp"
 
 double add_int_ph_update::attempt(){
     // discard whatever the previous attempt() staged here - keeps the reserved capacity

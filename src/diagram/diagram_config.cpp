@@ -1,7 +1,7 @@
-#include "../../include/updates/updates_config.hpp"
+#include "../../include/diagram/diagram_config.hpp"
 #include <cassert>
 
-updates_cfg::updates_cfg(
+diagram_cfg::diagram_cfg(
     std::array<double, 3> k_init,
     double tau_max, 
     double chem_pot, 
@@ -47,11 +47,11 @@ updates_cfg::updates_cfg(
     diagram_tail->next = nullptr;
 };
 
-updates_cfg::~updates_cfg(){
+diagram_cfg::~diagram_cfg(){
     delete[] vertex_pool;
 }
 
-updates_cfg::updates_cfg(updates_cfg&& other) noexcept :
+diagram_cfg::diagram_cfg(diagram_cfg&& other) noexcept :
     vertex_pool(other.vertex_pool),
     free_stack(other.free_stack),
     diagram_head(other.diagram_head),

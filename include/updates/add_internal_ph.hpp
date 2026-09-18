@@ -6,13 +6,13 @@
 #include <random>
 #include <vector>
 #include <simplemc/random/xoshiro256.hpp>
-#include "../vertex.hpp"
-#include "../weight_computation.hpp"
-#include "updates_config.hpp"
+#include "../diagram/vertex.hpp"
+#include "../comp_method/weight_computation.hpp"
+#include "../diagram/diagram_config.hpp"
 
 
 struct add_int_ph_update {
-    updates_cfg * const cfg {nullptr}; // bound to one diagram/config for this object's whole
+    diagram_cfg * const cfg {nullptr}; // bound to one diagram/config for this object's whole
                                         // lifetime - never reseated, so proposed_weights' reserved
                                         // capacity (sized from cfg->max_vertices below) can't go stale
     simplemc::xoshiro256ss * rng {nullptr};
@@ -25,7 +25,7 @@ struct add_int_ph_update {
     std::array<double, 3> w_proposed {0., 0., 0.};
     std::vector<weight::ProposedVertexWeight> proposed_weights;
 
-    add_int_ph_update(updates_cfg * cfg, simplemc::xoshiro256ss * rng)
+    add_int_ph_update(diagram_cfg * cfg, simplemc::xoshiro256ss * rng)
         : cfg(cfg), rng(rng)
     {
         assert(cfg != nullptr);

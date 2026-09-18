@@ -1,6 +1,6 @@
 #include "../../include/updates/swp_ph.hpp"
-#include "../../include/vertex_manager.hpp"
-#include "../../include/weight_computation.hpp"
+#include "../../include/diagram/vertex_manager.hpp"
+#include "../../include/comp_method/weight_computation.hpp"
 #include <array>
 #include <utility>
 
