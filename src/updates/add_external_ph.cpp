@@ -1,10 +1,10 @@
 #include "../../include/updates/add_external_ph.hpp"
-#include <Eigen/src/Core/Matrix.h>
-#include <Eigen/SVD>
 #include <array>
 #include <cassert>
 #include <cmath>
 #include <random>
+#include <Eigen/Core>
+#include <Eigen/SVD>
 #include "../../include/utils/numerical.hpp"
 #include "../../include/vertex.hpp"
 
