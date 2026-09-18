@@ -33,3 +33,6 @@ literature
 
 # ignore .h5 files
 *.h5
+
+# ignore claude folders
+.claude
