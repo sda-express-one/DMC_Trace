@@ -66,12 +66,28 @@ namespace weight {
     
             Eigen::Matrix<double, 4, 3> result;
     
-            // detects free propagators
+            // detects free propagators. At the band extremum H_LK(k) vanishes identically: the
+            // three bands are exactly degenerate there and no direction exists (the matrix below
+            // is built from the normalised vector, so it would be 0/0). Nothing may therefore be
+            // split here - returning a direction-dependent spectrum such as {A, B, B} would pick
+            // a fictitious k_hat and lift a degeneracy that is exact.
+            // The eigenvalue this function returns is 1/(2m), not an energy, since the matrix is
+            // built from k_hat - so the vanishing of H_LK(0) reads as {0, 0, 0} here, and 1 is
+            // substituted only because the caller inverts it (computeEffMassfromEigenval), where
+            // a zero would give an infinite mass. The substitution costs nothing: every consumer
+            // of eff_masses forms k^2/(2m) with this same k, so at k = 0 the mass cancels out of
+            // every result (the electron energy is 0 and el_prop_action is 1 whatever it holds),
+            // and Strength::compute's m dependence cancels identically. {1, 1, 1} keeps the three
+            // bands degenerate and the masses finite and positive.
+            // Eigenvectors are the identity, the fixed Gamma basis itself: orthonormal, as every
+            // overlap in the trace product assumes, and in the positive-diagonal gauge fixed
+            // below. With the eigenvalues degenerate the choice within the eigenspace is free
+            // anyway - the propagator is proportional to the identity, so any rotation commutes.
             if(numerical::isEqual(k[0], 0.) && numerical::isEqual(k[1],0.) && numerical::isEqual(k[2],0.)){
-                result << -2, 1, 1,
-                          (1./3), 0, 0,
-                           0, (1./3), 0,
-                           0, 0, (1./3);
+                result << 1., 1., 1.,
+                          1., 0., 0.,
+                          0., 1., 0.,
+                          0., 0., 1.;
                 return result;
             }
 
@@ -161,9 +177,14 @@ namespace weight {
 
             Eigen::RowVector3d eigenvalues;
         
-            // free propagator: same well-defined degenerate eigenvalues as diagonalizeLKHamiltonian's k=(0,0,0) case
+            // free propagator: same degenerate eigenvalues as diagonalizeLKHamiltonian's k=(0,0,0)
+            // case - H_LK vanishes at the extremum, so nothing is split, and 1 rather than 0 only
+            // because the caller inverts it for the mass. See there for the full reasoning.
+            // Note that away from k = 0 this function returns the solver's ascending order,
+            // whereas diagonalizeLKHamiltonian puts the largest first when A > B - so for A > B
+            // the two disagree on band ordering in the general path even though they agree here.
             if(numerical::isEqual(k[0],0) && numerical::isEqual(k[1],0) && numerical::isEqual(k[2],0)){
-                eigenvalues << -2, 1, 1;
+                eigenvalues << 1., 1., 1.;
                 return eigenvalues;
             }
     
@@ -206,7 +227,15 @@ namespace weight {
 
             Vertex * ptr {right_most->prev};
 
-            Eigen::Matrix3d weight_right {Eigen::Matrix3d::Identity()};
+            // seed with the suffix starting at right_most, so a partial refresh (right_most short
+            // of the tail) carries the untouched rest of the diagram in instead of dropping it:
+            // R(right_most->prev) = A(right_most->prev) * wf(right_most) * R(right_most). The tail
+            // itself contributes nothing, hence Identity there. right_most's own wf and
+            // right_component must already be current when this is called with right_most != tail.
+            Eigen::Matrix3d weight_right {
+                right_most->next == nullptr ? Eigen::Matrix3d::Identity()
+                                            : Eigen::Matrix3d(right_most->vertex_wf_component * right_most->right_component)
+            };
 
             while (ptr != left_most) {
                 weight_right =  ptr->el_prop_action.diagonal().asDiagonal() * weight_right;
@@ -229,7 +258,17 @@ namespace weight {
 
             Vertex * ptr {left_most};
 
-            Eigen::Matrix3d weight_left {left_most->el_prop_action.diagonal().asDiagonal()};
+            // seed with the prefix through left_most, so a partial refresh (left_most past the
+            // head) carries the untouched start of the diagram in instead of dropping it:
+            // L(left_most->next) = L(left_most) * wf(left_most) * A(left_most). The head has no
+            // prefix and no incoming overlap, hence just its action there. left_most's own
+            // left_component and wf must already be current when this is called with
+            // left_most != head; its el_prop_action is read fresh either way.
+            Eigen::Matrix3d weight_left {
+                left_most->prev == nullptr
+                    ? Eigen::Matrix3d(left_most->el_prop_action.diagonal().asDiagonal())
+                    : Eigen::Matrix3d(left_most->left_component * left_most->vertex_wf_component * left_most->el_prop_action.diagonal().asDiagonal())
+            };
 
             ptr = ptr->next;
 
