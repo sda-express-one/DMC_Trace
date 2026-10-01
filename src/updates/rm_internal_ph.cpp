@@ -132,7 +132,7 @@ double rm_int_ph_update::attempt(){
             std::exp(-ptr_one->ph_energy*(ptr_two->tau - ptr_one->tau))
     };
 
-    const double p_A {static_cast<double>(this->cfg->internal_ph_manager->current_length)/2. - 1.};
+    const double p_A {static_cast<double>(this->cfg->internal_ph_manager->current_length)/2.};
     const double p_B {static_cast<double>(this->cfg->internal_ph_manager->current_length + this->cfg->external_ph_manager->current_length - 1)};
 
     const double numerator {
