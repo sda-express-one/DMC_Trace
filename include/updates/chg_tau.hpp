@@ -50,21 +50,45 @@ struct chg_tau_update {
             return -1.;
         }
 
+        // u = 0 gives tau_proposed == tau_last_vertex exactly: a zero-length last segment. It has
+        // probability zero but can be drawn in floating point, so reject it. Written as a negated
+        // comparison so it also rejects a NaN tau_proposed.
+        if(!(tau_proposed > this->tau_last_vertex)){
+            return -1.;
+        }
+
         this->new_action(0,0) = std::exp(-energies[0]*(tau_proposed - this->tau_last_vertex));
         this->new_action(1,1) = std::exp(-energies[1]*(tau_proposed - this->tau_last_vertex));
         this->new_action(2,2) = std::exp(-energies[2]*(tau_proposed - this->tau_last_vertex));
 
-        const double diagram_weight_current {
-            (vertex->vertex_wf_component * vertex->el_prop_action.diagonal().asDiagonal() * vertex->left_component).trace()
-        };
-        const double diagram_weight_proposed {
-            (vertex->vertex_wf_component * this->new_action * vertex->left_component).trace()
+        // Acceptance ratio. The proposal rate total_lowest_energy = E_min - mu + sum(omega_ext) does not
+        // depend on the current tail position, so the reverse move draws from the same density; its mu
+        // and external-phonon parts cancel exactly against the tau_D-dependence of exp(mu*tau_D) and of
+        // the external phonon propagators, which are therefore left out of the weight as well. What
+        // remains is exp(-E_min*(tau_D - tau_proposed)) * T(proposed)/T(current), with T the electronic
+        // trace. It is evaluated without forming that factor: writing the last segment's action as
+        // exp(-E_min*d) * diag(exp(-(E_i - E_min)*d)), the lowest-band exponentials of the two
+        // durations reproduce exactly that prefactor and cancel it, so the ratio is the quotient of the
+        // same trace built with the band-normalised action only. Every normalised entry lies in (0, 1]
+        // and the absolute time tau_D never appears - evaluating exp(-E_min*tau_D) on its own underflows
+        // once E_min*tau_D exceeds ~708 (subnormal, losing digits) and is 0 beyond ~745, which gave 0/0
+        // for every attempt in long diagrams with an energetic last segment.
+        auto band_normalised = [&energies, lowest_energy](double duration){
+            return Eigen::Matrix3d(Eigen::Vector3d(
+                std::exp(-(energies[0] - lowest_energy)*duration),
+                std::exp(-(energies[1] - lowest_energy)*duration),
+                std::exp(-(energies[2] - lowest_energy)*duration)).asDiagonal());
         };
 
-        double numerator {std::exp(-lowest_energy * this->cfg->diagram_tail->tau) * diagram_weight_proposed};
-        double denominator {std::exp(-lowest_energy * tau_proposed) * diagram_weight_current};
+        // everything before the last segment is shared: L(vertex) and vertex's own overlap are reused
+        auto trace_with = [this](const Eigen::Matrix3d& action){
+            return (vertex->vertex_wf_component * action * vertex->left_component).trace();
+        };
 
-        return (numerator/denominator);
+        const double diagram_weight_current {trace_with(band_normalised(this->cfg->diagram_tail->tau - this->tau_last_vertex))};
+        const double diagram_weight_proposed {trace_with(band_normalised(tau_proposed - this->tau_last_vertex))};
+
+        return diagram_weight_proposed / diagram_weight_current;
     }
 
     void accept(){
@@ -75,6 +99,11 @@ struct chg_tau_update {
         this->vertex->el_prop_action = this->new_action;
 
         weight::LKMatrix::computeRightSide(cfg->diagram_head, cfg->diagram_tail);
+        // only the last segment's action changed: every left_component up to the last vertex is
+        // unaffected (none includes that action), but the tail's - the full product through the last
+        // segment - does. Refreshing from the last vertex reseeds from its own left_component, so this
+        // is O(1): it sets tail->left_component = L(vertex) * wf(vertex) * A(vertex).
+        weight::LKMatrix::computeLeftSide(cfg->diagram_tail, this->vertex);
 
         {
             int counter {0};
