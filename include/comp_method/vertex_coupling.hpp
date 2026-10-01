@@ -27,12 +27,6 @@ namespace Coupling {
         // i/q prefactor of Guster et al. Eq. (5)/(6). The eff_mass dependence cancels
         // identically (alpha goes as sqrt(m), divided by sqrt(m) here), as it must - Eq. (6)
         // with Eq. (7) substituted reduces to Eq. (5), which carries no m*.
-        // V_BvK is absent on purpose: the caller's acceptance ratio divides by (2*pi)^3 with
-        // no compensating box volume, i.e. it works in the continuum limit where the discrete
-        // sum has already been converted as sum_q -> V_BvK/(2*pi)^3 * integral d^3q. Keeping
-        // V_BvK here would leave a stray 1/V_BvK in every ratio. V_unit_cell, by contrast,
-        // stays: every call site multiplies its ratio by V_unit_cell on the same side as this
-        // pair, so the 1/sqrt(V_unit_cell) here squares away against it exactly.
         inline double compute(
                 const std::array<double, 3>& w,
                 const double& ph_energy,
@@ -50,8 +44,18 @@ namespace Coupling {
             return c1.dot(c2);
         }
 
+        // Band-basis change between two directions, i.e. compute() above done for all nine
+        // (n',n) pairs at once: m1/m2 hold eigenvectors as COLUMNS, so the overlap
+        // <n',k'|n,k> = sum_m <n',k'|m><m|n,k> is m1^T * m2, not m1 * m2 (real symmetric
+        // H_LK, so the eigenvector matrices are real orthogonal and ^T is the inverse).
+        // This is the s(k')s(k)^dagger structure of Guster et al. Eq. (44). Two properties
+        // the missing transpose used to break: a vertex that does not rotate the band basis
+        // must give the identity (m1^T*m1 == I, while m1*m1 does not), and the trace must be
+        // invariant under the arbitrary eigenvector sign gauge fixed in
+        // diagonalizeLKHamiltonian - with ^T the signs meet across a diagonal action matrix
+        // and cancel, without it they do not.
         inline Eigen::Matrix3d computeMatrix(const Eigen::Matrix3d& m1, const Eigen::Matrix3d& m2){
-            return Eigen::Matrix3d(m1 * m2);
+            return Eigen::Matrix3d(m1.transpose() * m2);
         }
     }
 }
