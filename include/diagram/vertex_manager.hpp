@@ -13,6 +13,11 @@ struct VertexPointer {
     bool used {false};
 };
 
+// Layout invariant: the used slots are [0, current_length), and every line occupies one ALIGNED
+// pair of slots (2m, 2m+1), the two being each other's .conjugated. addVertexPointers creates it,
+// removeVertexPointers relies on it (it fills a hole by moving the last pair down as a unit), and
+// exchangeLines preserves it. Code outside this struct must not write .conjugated or
+// .linked_vertex directly - relink lines through exchangeLines instead.
 struct VertexPointerManager {
     const int max_length {0};
     int current_length {0};
@@ -62,13 +67,41 @@ struct VertexPointerManager {
         current_length += 2;
     }
 
+    // Exchange which line vertex_a and vertex_b belong to: afterwards vertex_a is paired with
+    // vertex_b's former partner and vice versa. Done by swapping the two vertices' slots, so
+    // .conjugated never changes and every line stays in its aligned slot pair - unlike
+    // re-pointing .conjugated, which would leave lines straddling pairs and break
+    // removeVertexPointers. Which slot a vertex sits in carries no meaning for the samplers
+    // (chooseAnyVertex/chooseOutgoingVertex/selectVertex are uniform over slots), so this changes
+    // no proposal probability. Vertex::conj_vertex is diagram state and is the caller's to update.
+    void exchangeLines(Vertex * vertex_a, Vertex * vertex_b){
+        assert(vertex_a != nullptr);
+        assert(vertex_b != nullptr);
+        assert(vertex_a != vertex_b);
+
+        VertexPointer * slot_a {findPointer(vertex_a)};
+        VertexPointer * slot_b {findPointer(vertex_b)};
+        assert(slot_a->conjugated != slot_b); // already partners: exchanging would self-pair them
+
+        slot_a->linked_vertex = vertex_b;
+        slot_b->linked_vertex = vertex_a;
+        vertex_b->index = slot_a->position;
+        vertex_a->index = slot_b->position;
+    }
+
     void removeVertexPointers(VertexPointer& pointer_one, VertexPointer& pointer_two){
         assert(current_length % 2 == 0);
         assert(current_length > -1);
-        
+
         if(current_length < 2){
             return;
         }
+
+        // the layout invariant this function depends on (see the struct comment): the line being
+        // removed and the last line are each an aligned conjugate pair.
+        assert(pointer_one.conjugated == &pointer_two && pointer_two.conjugated == &pointer_one);
+        assert(pointer_one.position / 2 == pointer_two.position / 2);
+        assert(ptr_vertex_pool[current_length - 2].conjugated == &ptr_vertex_pool[current_length - 1]);
 
         if(pointer_one.position != current_length - 2 && pointer_two.position != current_length - 1){
             const int position_one {pointer_one.position};

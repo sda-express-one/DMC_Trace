@@ -109,18 +109,9 @@ void swp_ph_update::accept(){
     distant_one->conj_vertex = ptr_two;
     distant_two->conj_vertex = ptr_one;
 
-    // the VertexPointer pool tracks the same conjugate relationship in parallel via .conjugated -
-    // it needs the identical four-way fix-up, or the pool's own bookkeeping goes stale even
-    // though Vertex::conj_vertex above is now correct.
-    VertexPointer * slot_one {cfg->internal_ph_manager->findPointer(ptr_one)};
-    VertexPointer * slot_two {cfg->internal_ph_manager->findPointer(ptr_two)};
-    VertexPointer * slot_distant_one {cfg->internal_ph_manager->findPointer(distant_one)};
-    VertexPointer * slot_distant_two {cfg->internal_ph_manager->findPointer(distant_two)};
-
-    slot_one->conjugated = slot_distant_two;
-    slot_two->conjugated = slot_distant_one;
-    slot_distant_one->conjugated = slot_two;
-    slot_distant_two->conjugated = slot_one;
+    // the VertexPointer pool tracks the same pairing in parallel; the manager relinks it itself
+    // (by swapping the two vertices' slots), which keeps its aligned-pair layout intact.
+    cfg->internal_ph_manager->exchangeLines(ptr_one, ptr_two);
 
     // vertex_strength_component depends on w/ph_energy/diel_response/eff_masses, all of which
     // changed on at least one of the two vertices - refresh both.
