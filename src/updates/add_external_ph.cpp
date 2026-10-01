@@ -17,8 +17,6 @@ double add_ext_ph_update::attempt(){
         return -1.;
     }
 
-    const int current_total_order {cfg->internal_ph_manager->current_length + cfg->external_ph_manager->current_length};
-
     ph_index = this->cfg->phonon_mode_manager->drawPhononMode();
     const double ph_mode_energy {this->cfg->phonon_mode_manager->phonon_mode_pool[ph_index].phonon_energy};
     const double ph_mode_diel_response {this->cfg->phonon_mode_manager->phonon_mode_pool[ph_index].diel_response};
