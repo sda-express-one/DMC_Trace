@@ -4,7 +4,6 @@
 #include <cmath>
 #include <random>
 #include <Eigen/Core>
-#include <Eigen/SVD>
 #include "../../include/utils/numerical.hpp"
 #include "../../include/diagram/vertex.hpp"
 
@@ -202,36 +201,18 @@ double add_ext_ph_update::attempt(){
             beginning_product = beginning_product * entry.vertex_wf_component * entry.el_prop_action;
         }
 
-        // middle_product: exact via left_component division when well-conditioned - unrolling
-        // left_component's recursive definition gives left_component(ptr_one->next) =
-        // left_component(ptr_one) * ptr_one.wf * ptr_one.action, and left_component(ptr_two) =
-        // that same prefix * middle_product, so middle_product =
-        // left_component(ptr_one->next)^-1 * left_component(ptr_two) - no walk needed, and this
-        // degrades correctly to Identity when ptr_one->next == ptr_two (adjacent, empty middle).
-        // Falls back to the explicit walk (numerically robust, no division) when
-        // left_component(ptr_one->next) is too ill-conditioned to invert reliably - its diagonal
-        // action entries shrink like exp(-energy*duration), so for a long stretch before ptr_one
-        // the inversion can amplify floating-point error even though it's exact in principle.
+        // middle_product: the untouched stretch ptr_one->next .. ptr_two (exclusive), folded from each
+        // vertex's cached vertex_wf_component/el_prop_action. Identity when ptr_one->next == ptr_two
+        // (adjacent, empty middle). This is always walked explicitly rather than obtained as
+        // left_component(ptr_one->next)^-1 * left_component(ptr_two): that division is exact in
+        // principle but loses about kappa*eps in floating point, and kappa(left_component) grows
+        // like exp(sum of (E_max - E_min)*duration) along the prefix - measured errors reached 1e-6
+        // inside the 1e10 condition cap the division used, and O(1) beyond it. The walk is exact to
+        // rounding and, at ~3 ns per vertex against ~530 ns for a 3x3 SVD + solve, also cheaper for
+        // any middle shorter than ~160 vertices.
         Eigen::Matrix3d middle_product {Eigen::Matrix3d::Identity()};
-        if (ptr_one != ptr_two) {
-            const Eigen::Matrix3d & left_next {ptr_one->next->left_component};
-            Eigen::JacobiSVD<Eigen::Matrix3d> svd {left_next, Eigen::ComputeFullU | Eigen::ComputeFullV};
-            const double smallest_sv {svd.singularValues()(2)};
-            const double condition_number {svd.singularValues()(0) / smallest_sv};
-
-            constexpr double min_singular_value {1e-12};
-            constexpr double max_condition_number {1e10};
-
-            if (smallest_sv > min_singular_value && condition_number < max_condition_number) {
-                middle_product = svd.solve(ptr_two->left_component);
-            }
-            else {
-                Vertex * ptr_mid {ptr_one->next};
-                while (ptr_mid != ptr_two) {
-                    middle_product = middle_product * ptr_mid->vertex_wf_component * ptr_mid->el_prop_action;
-                    ptr_mid = ptr_mid->next;
-                }
-            }
+        for (Vertex * ptr_mid {ptr_one->next}; ptr_one != ptr_two && ptr_mid != ptr_two; ptr_mid = ptr_mid->next) {
+            middle_product = middle_product * ptr_mid->vertex_wf_component * ptr_mid->el_prop_action;
         }
 
         Eigen::Matrix3d end_product {Eigen::Matrix3d::Identity()};

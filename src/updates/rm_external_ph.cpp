@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cstddef>
 #include <Eigen/Core>
-#include <Eigen/SVD>
 #include "../../include/utils/numerical.hpp"
 #include "../../include/diagram/vertex.hpp"
 #include "../../include/diagram/vertex_manager.hpp"
@@ -108,36 +107,16 @@ double rm_ext_ph_update::attempt(){
             proposed_weights_beginning.push_back(prev_weight);
         }
 
-        // middle: untouched - exact via left_component division when well-conditioned (same
-        // trick as add_ext_ph_update's case 1), falling back to an explicit walk otherwise. Only
-        // meaningful when NOT adjacent; Identity otherwise (no middle at all). Stops at
-        // ptr_two->prev EXCLUSIVE (dividing by left_component(ptr_two->prev), not
-        // left_component(ptr_two), and the fallback walk stopping at != ptr_two->prev, not
-        // != ptr_two) - ptr_two->prev's own contribution is folded into the merge entry pushed
-        // below instead, so including it here too would double-count it (once with its stale
-        // short duration here, once with its correct extended duration there). This also
-        // degrades correctly when there's exactly one interior vertex (ptr_two->prev ==
-        // ptr_one->next): both sides of the division become the same matrix, giving Identity.
+        // middle: untouched - folded explicitly from each vertex's cached vertex_wf_component/
+        // el_prop_action (not via a left_component division; see add_ext_ph_update's case 1 for
+        // why). Only meaningful when NOT adjacent; Identity otherwise (no middle at all). Stops at
+        // ptr_two->prev EXCLUSIVE - ptr_two->prev's own contribution is folded into the merge entry
+        // pushed below instead, so including it here too would double-count it (once with its stale
+        // short duration here, once with its correct extended duration there). With exactly one
+        // interior vertex (ptr_two->prev == ptr_one->next) the walk is empty and gives Identity.
         Eigen::Matrix3d middle_product {Eigen::Matrix3d::Identity()};
-        if (!adjacent) {
-            const Eigen::Matrix3d & left_next {ptr_one->next->left_component};
-            Eigen::JacobiSVD<Eigen::Matrix3d> svd {left_next, Eigen::ComputeFullU | Eigen::ComputeFullV};
-            const double smallest_sv {svd.singularValues()(2)};
-            const double condition_number {svd.singularValues()(0) / smallest_sv};
-
-            constexpr double min_singular_value {1e-12};
-            constexpr double max_condition_number {1e10};
-
-            if (smallest_sv > min_singular_value && condition_number < max_condition_number) {
-                middle_product = svd.solve(ptr_two->prev->left_component);
-            }
-            else {
-                Vertex * ptr_mid {ptr_one->next};
-                while (ptr_mid != ptr_two->prev) {
-                    middle_product = middle_product * ptr_mid->vertex_wf_component * ptr_mid->el_prop_action;
-                    ptr_mid = ptr_mid->next;
-                }
-            }
+        for (Vertex * ptr_mid {ptr_one->next}; !adjacent && ptr_mid != ptr_two->prev; ptr_mid = ptr_mid->next) {
+            middle_product = middle_product * ptr_mid->vertex_wf_component * ptr_mid->el_prop_action;
         }
 
         // ptr_two->prev absorbs ptr_two - only when NOT adjacent (already folded into the
@@ -358,7 +337,8 @@ double rm_ext_ph_update::attempt(){
 
         // end walk: ptr_one->next -> diagram_tail->prev, pure revert (single shift). The first
         // entry chains off proposed_weights_middle's last entry, or proposed_weights_beginning's
-        // if adjacent (middle is empty then, since both merges landed in beginning together).
+        // if adjacent (middle is empty then, since both merges landed in beginning together);
+        // every later entry chains off the previous END entry, its actual predecessor.
         ptr = ptr_one->next;
         while (ptr != cfg->diagram_tail) {
             weight::ProposedVertexWeight current_new_weight;
@@ -371,7 +351,10 @@ double rm_ext_ph_update::attempt(){
             current_new_weight.eff_masses = weight::LKMatrix::computeEffMassfromEigenval(eigenvalues);
             current_new_weight.baseWF = eigensolution_wrapper.block<3,3>(1,0);
 
-            const Eigen::Matrix3d & prev_baseWF {proposed_weights_middle.empty() ? proposed_weights_beginning.back().baseWF : proposed_weights_middle.back().baseWF};
+            const Eigen::Matrix3d & prev_baseWF {
+                !proposed_weights_end.empty() ? proposed_weights_end.back().baseWF
+                : (proposed_weights_middle.empty() ? proposed_weights_beginning.back().baseWF : proposed_weights_middle.back().baseWF)
+            };
             current_new_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(prev_baseWF, current_new_weight.baseWF);
 
             current_new_weight.el_prop_action(0,0) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[0])*(ptr->tau_next - ptr->tau));
