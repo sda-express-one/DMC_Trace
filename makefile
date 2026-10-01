@@ -14,12 +14,12 @@ BIN_DIR = bin
 # target name
 PROGRAM_NAME = diagramc
 
-# sources files and corresponding object files
-SOURCES = $(wildcard $(SRC_DIR)/*.cpp)
-# SOURCES += $(wildcard $(SRC_DIR))
+# sources files and corresponding object files - recursive, since sources now live under
+# per-module subdirectories (src/diagram, src/updates, ...) rather than directly in src/
+SOURCES = $(shell find $(SRC_DIR) -name '*.cpp')
 
 # map src/file.cpp -> build/release/foo.o (preserving directory structure)
-OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)%.o,$(SOURCES))
+OBJECTS = $(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(SOURCES))
 
 # build-specific flags
 DEBUG_FLAGS = -g -O0 -fsanitize=address -fno-omit-frame-pointer -fsanitize=undefined -DDEBUG
@@ -46,6 +46,12 @@ $(TARGET): $(OBJECTS) | $(BIN_DIR)
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+# order-only prerequisites above need actual rules to create these directories - mkdir -p in
+# the compile recipe above also handles per-file subdirectories (e.g. build/release/diagram/),
+# but $(BUILD_DIR)/$(BIN_DIR) themselves still need to exist first for that mkdir invocation.
+$(BUILD_DIR) $(BIN_DIR):
+	mkdir -p $@
 
 # convenience targets
 debug:

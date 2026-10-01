@@ -22,7 +22,7 @@ struct PhononModeManager{
         assert(static_cast<int>(phonon_mode_pool.size()) == num_phonon_modes);
     }
 
-    const int drawPhononMode() const {
+    int drawPhononMode() const {
         assert(rng != nullptr);
         assert(num_phonon_modes > 0);
 

@@ -1,5 +1,5 @@
-#ifndef UPDATE_CONFIG_HPP
-#define UPDATE_CONFIG_HPP
+#ifndef DIAGRAM_CONFIG_HPP
+#define DIAGRAM_CONFIG_HPP
 
 #include <cassert>
 #include <array>
@@ -137,4 +137,4 @@ struct diagram_cfg {
     }
 };
 
-#endif // !UPDATE_CONFIG_HPP
+#endif // !DIAGRAM_CONFIG_HPP
