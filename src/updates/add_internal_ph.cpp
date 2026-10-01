@@ -93,7 +93,8 @@ double add_int_ph_update::attempt(){
             weight::ProposedVertexWeight second_current_new_weight;
 
             second_current_new_weight.k = ptr_two->k;
-            second_current_new_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(current_new_weight.baseWF, ptr_two->baseWF);
+            second_current_new_weight.baseWF = ptr_two->baseWF;
+            second_current_new_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(current_new_weight.baseWF, second_current_new_weight.baseWF);
             second_current_new_weight.eff_masses = ptr_two->eff_masses;
 
             double k_final_sq = second_current_new_weight.k[0]*second_current_new_weight.k[0] + second_current_new_weight.k[1]*second_current_new_weight.k[1] + second_current_new_weight.k[2]*second_current_new_weight.k[2];
@@ -125,7 +126,8 @@ double add_int_ph_update::attempt(){
             weight::ProposedVertexWeight second_current_new_weight;
 
             second_current_new_weight.k = ptr_two->k;
-            second_current_new_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(current_new_weight.baseWF, ptr_two->baseWF);
+            second_current_new_weight.baseWF = ptr_two->baseWF;
+            second_current_new_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(current_new_weight.baseWF, second_current_new_weight.baseWF);
             second_current_new_weight.eff_masses = ptr_two->eff_masses;
             double k_final_sq = second_current_new_weight.k[0]*second_current_new_weight.k[0] + second_current_new_weight.k[1]*second_current_new_weight.k[1] + second_current_new_weight.k[2]*second_current_new_weight.k[2];
             second_current_new_weight.el_prop_action(0,0) = std::exp(-k_final_sq/(2*second_current_new_weight.eff_masses[0])*(ptr_two->tau_next - tau_two));
