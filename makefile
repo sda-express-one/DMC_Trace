@@ -3,7 +3,7 @@ BUILD ?= release
 
 CXX = mpic++
 CXXFLAGS = --std=c++23 -Wall -Wextra -Werror -Wpedantic
-LDFLAGS = -L/home/samuele/.local/lib -Wl,-rpath=/home/samuele/.local/lib -Wl,--start-group -lsimplemc-mpi -lsimplemc-numeric -lsimplemc-serialize-json -lsimplemc-utils -Wl,--end-group -I/usr/local/include -L/usr/local/lib -lfmt
+LDFLAGS = -L/home/samuele/.local/lib -Wl,-rpath=/home/samuele/.local/lib -Wl,--start-group -lsimplemc-mpi -lsimplemc-numeric -lsimplemc-serialize-json -lsimplemc-utils -Wl,--end-group -L/usr/local/lib -lfmt
 
 # directories
 SRC_DIR = src

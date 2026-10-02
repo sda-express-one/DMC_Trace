@@ -1,0 +1,10 @@
+CompileFlags:
+  Add:
+    - -std=c++23
+    - -I/usr/local/include
+    - -I/home/samuele/.local/include
+    - -I/usr/include/eigen3
+Diagnostics:
+  # simplemc returns Eigen matrices from constexpr functions: valid C++23 (GCC accepts it) that
+  # clang 18 does not implement yet
+  Suppress: [constexpr_non_literal_return]

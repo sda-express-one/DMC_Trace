@@ -1,0 +1,5 @@
+CompileFlags:
+  Add:
+    # the tests include project headers as "include/...", relative to the repo root (clangd runs a
+    # file's fallback command from the file's own directory, so this is the repo root for tests/)
+    - -I..
