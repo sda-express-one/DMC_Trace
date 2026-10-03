@@ -1,4 +1,4 @@
-#include "../../include/diagram/diagram_config.hpp"
+#include "diagram/diagram_config.hpp"
 #include <cassert>
 
 diagram_cfg::diagram_cfg(

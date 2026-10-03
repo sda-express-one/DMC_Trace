@@ -3,8 +3,8 @@
 
 #include <cassert>
 #include <simplemc/accs/var_acc.hpp>
-#include "../diagram/diagram_config.hpp"
-#include "../diagram/vertex.hpp"
+#include "diagram/diagram_config.hpp"
+#include "diagram/vertex.hpp"
 
 struct green_trace_measurement {
     diagram_cfg * const cfg {nullptr};

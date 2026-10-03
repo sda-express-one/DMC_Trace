@@ -2,7 +2,8 @@
 BUILD ?= release
 
 CXX = mpic++
-CXXFLAGS = --std=c++23 -Wall -Wextra -Werror -Wpedantic
+# project headers are included relative to include/ (e.g. "diagram/vertex.hpp") from every directory
+CXXFLAGS = --std=c++23 -Wall -Wextra -Werror -Wpedantic -I$(INCLUDE_DIR)
 LDFLAGS = -L/home/samuele/.local/lib -Wl,-rpath=/home/samuele/.local/lib -Wl,--start-group -lsimplemc-mpi -lsimplemc-numeric -lsimplemc-serialize-json -lsimplemc-utils -Wl,--end-group -L/usr/local/lib -lfmt
 
 # directories

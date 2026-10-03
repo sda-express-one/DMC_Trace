@@ -9,7 +9,7 @@
 #include <Eigen/Core>
 #include <simplemc/accs/batch_acc.hpp>
 #include <simplemc/accs/jackknife.hpp>
-#include "../diagram/diagram_config.hpp"
+#include "diagram/diagram_config.hpp"
 
 // Binned estimator of the band-matrix Green function G_nm(p, tau) - or, selecting phonons present at
 // the imaginary-time boundary, of the corresponding P function - with jackknife error bars.

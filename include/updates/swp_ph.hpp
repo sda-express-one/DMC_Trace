@@ -5,9 +5,9 @@
 #include <cassert>
 #include <random>
 #include <simplemc/random/xoshiro256.hpp>
-#include "../diagram/diagram_config.hpp"
-#include "../diagram/vertex.hpp"
-#include "../comp_method/weight_computation.hpp"
+#include "diagram/diagram_config.hpp"
+#include "diagram/vertex.hpp"
+#include "comp_method/weight_computation.hpp"
 
 
 struct swp_ph_update {

@@ -5,9 +5,9 @@
 #include <cmath>
 #include <random>
 #include <simplemc/random/xoshiro256.hpp>
-#include "../diagram/vertex.hpp"
-#include "../diagram/diagram_config.hpp"
-#include "../comp_method/weight_computation.hpp"
+#include "diagram/vertex.hpp"
+#include "diagram/diagram_config.hpp"
+#include "comp_method/weight_computation.hpp"
 
 struct mv_tau_update {
     diagram_cfg * cfg;

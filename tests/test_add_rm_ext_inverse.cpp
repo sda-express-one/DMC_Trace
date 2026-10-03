@@ -14,13 +14,13 @@
 #include <cstdio>
 #include <random>
 #include "test_common.hpp"
-#include "include/updates/add_internal_ph.hpp"
-#include "include/updates/rm_internal_ph.hpp"
-#include "include/updates/add_external_ph.hpp"
-#include "include/updates/rm_external_ph.hpp"
-#include "include/updates/swp_ph.hpp"
-#include "include/updates/mv_vertex.hpp"
-#include "include/updates/chg_tau.hpp"
+#include "updates/add_internal_ph.hpp"
+#include "updates/rm_internal_ph.hpp"
+#include "updates/add_external_ph.hpp"
+#include "updates/rm_external_ph.hpp"
+#include "updates/swp_ph.hpp"
+#include "updates/mv_vertex.hpp"
+#include "updates/chg_tau.hpp"
 
 int main(){
     test::Checks check {"add_ext_ph x rm_ext_ph ratio product"};

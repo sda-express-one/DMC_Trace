@@ -1,6 +1,9 @@
 CompileFlags:
   Add:
     - -std=c++23
+    # project headers are included relative to include/; absolute, because clangd resolves a relative
+    # -I from each file's own directory
+    - -I/home/samuele/Documenti/phd_code/DMC_Trace/include
     - -I/usr/local/include
     - -I/home/samuele/.local/include
     - -I/usr/include/eigen3

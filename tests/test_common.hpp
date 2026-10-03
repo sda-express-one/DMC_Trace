@@ -9,11 +9,11 @@
 #include <cstdio>
 #include <vector>
 #include <simplemc/random/xoshiro256.hpp>
-#include "include/diagram/diagram_config.hpp"
-#include "include/diagram/phonon_manager.hpp"
-#include "include/diagram/vertex_manager.hpp"
-#include "include/comp_method/weight_computation.hpp"
-#include "include/utils/diagram_sanitizer.hpp"
+#include "diagram/diagram_config.hpp"
+#include "diagram/phonon_manager.hpp"
+#include "diagram/vertex_manager.hpp"
+#include "comp_method/weight_computation.hpp"
+#include "utils/diagram_sanitizer.hpp"
 
 namespace test {
 

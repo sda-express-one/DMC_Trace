@@ -6,9 +6,9 @@
 #include <random>
 #include <vector>
 #include <simplemc/random/xoshiro256.hpp>
-#include "../diagram/vertex.hpp"
-#include "../comp_method/weight_computation.hpp"
-#include "../diagram/diagram_config.hpp"
+#include "diagram/vertex.hpp"
+#include "comp_method/weight_computation.hpp"
+#include "diagram/diagram_config.hpp"
 
 
 struct add_int_ph_update {

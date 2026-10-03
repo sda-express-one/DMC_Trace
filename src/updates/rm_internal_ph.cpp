@@ -1,12 +1,12 @@
 
-#include "../../include/updates/rm_internal_ph.hpp"
+#include "updates/rm_internal_ph.hpp"
 #include <array>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <Eigen/Core>
-#include "../../include/diagram/vertex_manager.hpp"
-#include "../../include/comp_method/weight_computation.hpp"
+#include "diagram/vertex_manager.hpp"
+#include "comp_method/weight_computation.hpp"
 
 double rm_int_ph_update::attempt(){
     proposed_weights.clear();

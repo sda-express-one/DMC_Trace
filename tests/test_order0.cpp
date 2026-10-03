@@ -11,8 +11,8 @@
 #include <cstdio>
 #include <random>
 #include "test_common.hpp"
-#include "include/updates/chg_tau.hpp"
-#include "include/measurements/green_func.hpp"
+#include "updates/chg_tau.hpp"
+#include "measurements/green_func.hpp"
 
 int main(){
     test::Checks check {"Green function estimator at order 0 (chg_tau only)"};

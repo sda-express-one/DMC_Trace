@@ -4,9 +4,9 @@
 #include <cassert>
 #include <vector>
 #include <simplemc/random/xoshiro256.hpp>
-#include "../diagram/diagram_config.hpp"
-#include "../diagram/vertex.hpp"
-#include "../comp_method/weight_computation.hpp"
+#include "diagram/diagram_config.hpp"
+#include "diagram/vertex.hpp"
+#include "comp_method/weight_computation.hpp"
 
 struct rm_ext_ph_update {
     diagram_cfg * const cfg {nullptr};

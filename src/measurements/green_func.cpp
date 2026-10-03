@@ -1,11 +1,11 @@
-#include "../../include/measurements/green_func.hpp"
+#include "measurements/green_func.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <span>
 #include <stdexcept>
-#include "../../include/comp_method/weight_computation.hpp"
+#include "comp_method/weight_computation.hpp"
 
 green_func_measurement::green_func_measurement(diagram_cfg * cfg, std::array<double, 3> p, int n_bins, int boundary_phonons,
                                                std::size_t n_batches)

@@ -4,7 +4,7 @@
 #include <random>
 #include <cassert>
 #include <simplemc/random/xoshiro256.hpp>
-#include "vertex.hpp"
+#include "diagram/vertex.hpp"
 
 struct VertexPointer {
     Vertex * linked_vertex {nullptr};

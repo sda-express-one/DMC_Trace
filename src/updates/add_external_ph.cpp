@@ -1,11 +1,11 @@
-#include "../../include/updates/add_external_ph.hpp"
+#include "updates/add_external_ph.hpp"
 #include <array>
 #include <cassert>
 #include <cmath>
 #include <random>
 #include <Eigen/Core>
-#include "../../include/utils/numerical.hpp"
-#include "../../include/diagram/vertex.hpp"
+#include "utils/numerical.hpp"
+#include "diagram/vertex.hpp"
 
 double add_ext_ph_update::attempt(){
     proposed_weights_beginning.clear();

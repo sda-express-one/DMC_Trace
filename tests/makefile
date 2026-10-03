@@ -5,14 +5,15 @@
 #
 # The project sources are compiled separately into build/tests/obj (with header dependency tracking),
 # never reusing the main build's objects, and asserts stay enabled: the invariants they guard are part
-# of what is being tested. Include paths for Eigen and simplemc come from CPLUS_INCLUDE_PATH, as for the
-# main build.
-
-CXX = mpic++
-CXXFLAGS = --std=c++23 -O2 -g -Wall -Wextra -Werror -Wpedantic -MMD -MP
-LDFLAGS = -L/home/samuele/.local/lib -Wl,-rpath=/home/samuele/.local/lib -Wl,--start-group -lsimplemc-mpi -lsimplemc-numeric -lsimplemc-serialize-json -lsimplemc-utils -Wl,--end-group -L/usr/local/lib -lfmt
+# of what is being tested. Project headers are included relative to include/, as in the main build;
+# include paths for Eigen and simplemc come from CPLUS_INCLUDE_PATH.
 
 ROOT = ..
+
+CXX = mpic++
+CXXFLAGS = --std=c++23 -O2 -g -Wall -Wextra -Werror -Wpedantic -MMD -MP -I$(ROOT)/include
+LDFLAGS = -L/home/samuele/.local/lib -Wl,-rpath=/home/samuele/.local/lib -Wl,--start-group -lsimplemc-mpi -lsimplemc-numeric -lsimplemc-serialize-json -lsimplemc-utils -Wl,--end-group -L/usr/local/lib -lfmt
+
 BUILD_DIR = $(ROOT)/build/tests
 
 SOURCES = $(shell find $(ROOT)/src -name '*.cpp')
@@ -25,7 +26,7 @@ all: $(BINARIES)
 
 $(BUILD_DIR)/test_%: test_%.cpp $(OBJECTS)
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) -I$(ROOT) $< $(OBJECTS) -o $@ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) $< $(OBJECTS) -o $@ $(LDFLAGS)
 
 $(BUILD_DIR)/obj/%.o: $(ROOT)/src/%.cpp
 	@mkdir -p $(dir $@)

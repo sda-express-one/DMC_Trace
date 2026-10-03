@@ -3,9 +3,9 @@
 
 #include <cassert>
 #include <array>
-#include "vertex.hpp"
-#include "vertex_manager.hpp"
-#include "phonon_manager.hpp"
+#include "diagram/vertex.hpp"
+#include "diagram/vertex_manager.hpp"
+#include "diagram/phonon_manager.hpp"
 
 struct diagram_cfg {
     Vertex * vertex_pool {nullptr}; // base of the new[]-allocated pool, kept only for cleanup

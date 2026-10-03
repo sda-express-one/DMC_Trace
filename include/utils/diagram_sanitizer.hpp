@@ -8,10 +8,10 @@
 #include <cstdint>
 #include <limits>
 #include <Eigen/Core>
-#include "../diagram/diagram_config.hpp"
-#include "../diagram/vertex.hpp"
-#include "../diagram/vertex_manager.hpp"
-#include "../comp_method/weight_computation.hpp"
+#include "diagram/diagram_config.hpp"
+#include "diagram/vertex.hpp"
+#include "diagram/vertex_manager.hpp"
+#include "comp_method/weight_computation.hpp"
 
 // Periodic integrity check and repair of a diagram's cached state.
 //

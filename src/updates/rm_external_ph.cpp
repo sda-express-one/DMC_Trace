@@ -1,12 +1,12 @@
-#include "../../include/updates/rm_external_ph.hpp"
+#include "updates/rm_external_ph.hpp"
 #include <array>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <Eigen/Core>
-#include "../../include/utils/numerical.hpp"
-#include "../../include/diagram/vertex.hpp"
-#include "../../include/diagram/vertex_manager.hpp"
+#include "utils/numerical.hpp"
+#include "diagram/vertex.hpp"
+#include "diagram/vertex_manager.hpp"
 
 double rm_ext_ph_update::attempt(){
     proposed_weights_beginning.clear();
