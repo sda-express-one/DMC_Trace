@@ -11,13 +11,18 @@
 #include "diagram/diagram_config.hpp"
 
 struct chg_tau_update {
-    diagram_cfg * cfg;
+    diagram_cfg * const cfg;
     simplemc::xoshiro256ss* rng;
     mutable std::uniform_real_distribution<double> std_unif {0.,1.};
     Vertex * vertex {nullptr};
     Eigen::Matrix3d new_action {Eigen::Matrix3d::Identity()};
     double tau_last_vertex {0.};
     double tau_proposed {0.};
+
+    chg_tau_update(const chg_tau_update&) = delete;
+    chg_tau_update& operator=(const chg_tau_update&) = delete;
+    chg_tau_update& operator=(chg_tau_update&&) = delete;
+    chg_tau_update(chg_tau_update&& other) noexcept = default;
 
     double attempt(){
         this->vertex = this->cfg->diagram_tail->prev;

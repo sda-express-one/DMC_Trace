@@ -10,7 +10,7 @@
 #include "comp_method/weight_computation.hpp"
 
 struct mv_tau_update {
-    diagram_cfg * cfg;
+    diagram_cfg * const cfg;
     simplemc::xoshiro256ss* rng;
     mutable std::uniform_real_distribution<double> std_unif {0.,1.};
     Vertex * vertex {nullptr};
@@ -18,6 +18,11 @@ struct mv_tau_update {
     Eigen::Matrix3d new_action_el_outgoing {Eigen::Matrix3d::Identity()};
     int index {-1};
     double tau_proposed {0.};
+
+    mv_tau_update(const mv_tau_update&) = delete;
+    mv_tau_update& operator=(const mv_tau_update&) = delete;
+    mv_tau_update& operator=(mv_tau_update&&) = delete;
+    mv_tau_update(mv_tau_update&& other) noexcept = default;
 
     double attempt(){
         const int total_current_order {this->cfg->internal_ph_manager->current_length + this->cfg->external_ph_manager->current_length};
