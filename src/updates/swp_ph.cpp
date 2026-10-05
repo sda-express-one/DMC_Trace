@@ -113,8 +113,8 @@ void swp_ph_update::accept(){
     // (by swapping the two vertices' slots), which keeps its aligned-pair layout intact.
     cfg->internal_ph_manager->exchangeLines(ptr_one, ptr_two);
 
-    // vertex_strength_component depends on w/ph_energy/diel_response/eff_masses, all of which
-    // changed on at least one of the two vertices - refresh both.
+    // vertex_strength_component depends on w/ph_energy/diel_response (the eff_masses it is passed
+    // cancel identically), all of which were swapped between the two vertices - refresh both.
     ptr_one->vertexStrength();
     ptr_two->vertexStrength();
 

@@ -19,6 +19,13 @@ struct mv_tau_update {
     int index {-1};
     double tau_proposed {0.};
 
+    mv_tau_update(diagram_cfg * cfg, simplemc::xoshiro256ss * rng)
+        : cfg(cfg), rng(rng)
+    {
+        assert(cfg != nullptr);
+        assert(rng != nullptr);
+    }
+
     mv_tau_update(const mv_tau_update&) = delete;
     mv_tau_update& operator=(const mv_tau_update&) = delete;
     mv_tau_update& operator=(mv_tau_update&&) = delete;

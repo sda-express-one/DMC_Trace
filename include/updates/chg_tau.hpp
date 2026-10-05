@@ -19,6 +19,13 @@ struct chg_tau_update {
     double tau_last_vertex {0.};
     double tau_proposed {0.};
 
+    chg_tau_update(diagram_cfg * cfg, simplemc::xoshiro256ss * rng)
+        : cfg(cfg), rng(rng)
+    {
+        assert(cfg != nullptr);
+        assert(rng != nullptr);
+    }
+
     chg_tau_update(const chg_tau_update&) = delete;
     chg_tau_update& operator=(const chg_tau_update&) = delete;
     chg_tau_update& operator=(chg_tau_update&&) = delete;
