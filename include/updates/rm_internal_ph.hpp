@@ -7,6 +7,7 @@
 #include "diagram/vertex.hpp"
 #include "comp_method/weight_computation.hpp"
 #include "diagram/diagram_config.hpp"
+#include "utils/prop_distribs.hpp"
 
 
 struct rm_int_ph_update {
@@ -15,6 +16,8 @@ struct rm_int_ph_update {
     simplemc::xoshiro256ss * rng {nullptr};
     Vertex * ptr_one {nullptr};
     Vertex * ptr_two {nullptr};
+    // the proposal add_int_ph draws w from, for the reverse density
+    proposal::PhononMomentum w_proposal {};
 
     std::vector<weight::ProposedVertexWeight> proposed_weights;
 

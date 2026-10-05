@@ -36,7 +36,15 @@ namespace Coupling {
             return ((1./std::sqrt(w[0]*w[0]+w[1]*w[1]+w[2]*w[2]))*std::sqrt(2.*std::sqrt(2.)*std::numbers::pi*std::pow(ph_energy,1.5)*alpha(ph_energy, diel_response, eff_mass)
                     /(Parameters::V_unit_cell*Parameters::V_BvK*std::sqrt(eff_mass))));
             }
-                
+
+        // |g(w)|^2 |w|^2 for a phonon line (both vertices): independent of w, since compute() goes
+        // as 1/|w|. This is the line's coupling in the measure dr dOmega, the one the momentum
+        // proposal (proposal::PhononMomentum) is written in.
+        inline double squaredTimesMomentumSquared(const double& ph_energy, const double& diel_response) {
+            const double g_unit {compute(std::array<double, 3>{1., 0., 0.}, ph_energy, diel_response)};
+            return g_unit * g_unit;
+        }
+
         }
     
     namespace LKOverlap{

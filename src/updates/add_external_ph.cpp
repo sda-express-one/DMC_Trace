@@ -33,8 +33,7 @@ double add_ext_ph_update::attempt(){
         return -1;
     }
 
-    std::normal_distribution<double> distrib_norm(0, std::sqrt(1/(cfg->current_tau_length-tau_two+tau_one)));
-    w_proposed = {distrib_norm(*this->rng), distrib_norm(*this->rng), distrib_norm(*this->rng)};
+    w_proposed = w_proposal.draw(*this->rng, cfg->current_tau_length - tau_two + tau_one);
 
     if (tau_one < tau_two){
         incoming_before_outgoing = true;
@@ -221,12 +220,12 @@ double add_ext_ph_update::attempt(){
         }
 
         // the phonon's own existence span (per computeExternalPhPropAction's wrap convention) is
-        // current_tau_length - tau_two + tau_one, matching the variance used to sample w_proposed
-        // above.
+        // current_tau_length - tau_two + tau_one, the same length w_proposed was drawn with above.
+        // The momentum enters per dr dOmega, as in add_int_ph: the coupling as |g|^2|w|^2 and the
+        // proposal as its sphericalDensity, both finite at w = 0.
         const double weight_proposed {
             (beginning_product * middle_product * end_product).trace() *
-            Coupling::Strength::compute(w_proposed, ph_mode_energy, ph_mode_diel_response) *
-            Coupling::Strength::compute(w_proposed, ph_mode_energy, ph_mode_diel_response) *
+            Coupling::Strength::squaredTimesMomentumSquared(ph_mode_energy, ph_mode_diel_response) *
             std::exp(-ph_mode_energy*(cfg->current_tau_length - tau_two + tau_one))
         };
         const double weight_current {this->cfg->diagram_head->right_component.trace()};
@@ -250,8 +249,7 @@ double add_ext_ph_update::attempt(){
             std::pow(2*std::numbers::pi, 3) *
             weight_current *
             ph_mode_energy *ph_mode_energy * std::exp(-ph_mode_energy*(cfg->current_tau_length - tau_two + tau_one)) *
-            std::pow((cfg->current_tau_length - tau_two + tau_one)/(2*std::numbers::pi), 1.5) *
-            std::exp(-((w_proposed[0]*w_proposed[0] + w_proposed[1]*w_proposed[1] + w_proposed[2]*w_proposed[2])/2.)*(cfg->current_tau_length - tau_two + tau_one))
+            w_proposal.sphericalDensity(w_proposed, cfg->current_tau_length - tau_two + tau_one)
         };
 
         return numerator/denominator;
@@ -453,17 +451,16 @@ double add_ext_ph_update::attempt(){
 
         // computeExternalPhPropAction's wrap-convention formula (current_tau_length-tau_two+tau_one)
         // is unconditional on case: in case 2 (tau_two < tau_one) it evaluates to MORE than
-        // current_tau_length, exactly reflecting the middle region being traversed twice - matches
-        // the same variance used to sample w_proposed above.
+        // current_tau_length, exactly reflecting the middle region being traversed twice - the same
+        // length w_proposed was drawn with above.
         const double weight_proposed {
             (beginning_product * middle_product * end_product).trace() *
-            Coupling::Strength::compute(w_proposed, ph_mode_energy, ph_mode_diel_response) *
-            Coupling::Strength::compute(w_proposed, ph_mode_energy, ph_mode_diel_response) *
+            Coupling::Strength::squaredTimesMomentumSquared(ph_mode_energy, ph_mode_diel_response) *
             std::exp(-ph_mode_energy*(cfg->current_tau_length - tau_two + tau_one))
         };
         const double weight_current {this->cfg->diagram_head->right_component.trace()};
 
-        // same forward-proposal mechanics as case 1 (mode draw, the two exponentials, the Gaussian
+        // same forward-proposal mechanics as case 1 (mode draw, the two exponentials, the half-normal
         // w draw) - p_A/p_B don't depend on which case the draw landed in, so they're unchanged.
         const double p_B {1.};
         const double p_A {1.*(static_cast<double>(cfg->external_ph_manager->current_length)/2.) + 1.};
@@ -479,8 +476,7 @@ double add_ext_ph_update::attempt(){
             std::pow(2*std::numbers::pi, 3) *
             weight_current *
             ph_mode_energy * ph_mode_energy * std::exp(-ph_mode_energy*(cfg->current_tau_length - tau_two + tau_one)) *
-            std::pow((cfg->current_tau_length - tau_two + tau_one)/(2*std::numbers::pi), 1.5) *
-            std::exp(-((w_proposed[0]*w_proposed[0] + w_proposed[1]*w_proposed[1] + w_proposed[2]*w_proposed[2])/2.)*(cfg->current_tau_length - tau_two + tau_one))
+            w_proposal.sphericalDensity(w_proposed, cfg->current_tau_length - tau_two + tau_one)
         };
 
         return numerator/denominator;

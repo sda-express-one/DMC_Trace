@@ -55,8 +55,7 @@ double add_int_ph_update::attempt(){
     }
     
     
-    std::normal_distribution<double> distrib_norm(0, std::sqrt(1/(tau_two - tau_one)));
-    this->w_proposed = {distrib_norm(*this->rng), distrib_norm(*this->rng), distrib_norm(*this->rng)};
+    this->w_proposed = this->w_proposal.draw(*this->rng, this->tau_two - this->tau_one);
 
     // find position of new tau values
     ptr_two = this->cfg->findPositionFromLeft(ptr_one, this->tau_two);
@@ -173,8 +172,7 @@ double add_int_ph_update::attempt(){
 
     const double weights_proposed {
         (new_matrix_product * ptr_two->next->vertex_wf_component * ptr_two->next->right_component * ptr_one->left_component * ptr_one->vertex_wf_component * ptr_one_action_new).trace() *
-            Coupling::Strength::compute(w_proposed, ph_mode_energy, ph_mode_diel_response) *
-            Coupling::Strength::compute(w_proposed, ph_mode_energy, ph_mode_diel_response) *
+            Coupling::Strength::squaredTimesMomentumSquared(ph_mode_energy, ph_mode_diel_response) *
             std::exp(-ph_mode_energy*(this->tau_two - this->tau_one))
     };
     const double weights_current {this->cfg->diagram_head->right_component.trace()};
@@ -182,7 +180,9 @@ double add_int_ph_update::attempt(){
     const double p_B {static_cast<double>(this->cfg->internal_ph_manager->current_length + this->cfg->external_ph_manager->current_length + 1)};
     const double p_A {static_cast<double>(this->cfg->internal_ph_manager->current_length)/2. + 1.};
     
-    // add context factors
+    // add context factors. The momentum enters per dr dOmega: the coupling as |g|^2|w|^2 (above) and
+    // the proposal as its sphericalDensity, both finite at w = 0 - per d^3w they would be
+    // |g|^2 = C/|w|^2 and q = sphericalDensity/|w|^2, the same ratio.
     const double numerator {
         p_B *
         weights_proposed * 
@@ -194,8 +194,7 @@ double add_int_ph_update::attempt(){
         weights_current *
         ph_mode_energy * std::exp(-ph_mode_energy*(tau_two - tau_one)) *
         std::pow(2.*std::numbers::pi, 3) * 
-        std::pow((this->tau_two - this->tau_one)/(2*std::numbers::pi), 1.5) * 
-        std::exp(-((w_proposed[0]*w_proposed[0]+w_proposed[1]*w_proposed[1]+w_proposed[2]*w_proposed[2])/2.)*(this->tau_two - this->tau_one))
+        this->w_proposal.sphericalDensity(w_proposed, this->tau_two - this->tau_one)
     };
 
     return numerator/denominator;

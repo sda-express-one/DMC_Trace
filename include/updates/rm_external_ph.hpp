@@ -7,6 +7,7 @@
 #include "diagram/diagram_config.hpp"
 #include "diagram/vertex.hpp"
 #include "comp_method/weight_computation.hpp"
+#include "utils/prop_distribs.hpp"
 
 struct rm_ext_ph_update {
     diagram_cfg * const cfg {nullptr};
@@ -14,6 +15,8 @@ struct rm_ext_ph_update {
     simplemc::xoshiro256ss * rng {nullptr};
     Vertex * ptr_one {nullptr};
     Vertex * ptr_two {nullptr};
+    // the proposal add_ext_ph draws w from, for the reverse density
+    proposal::PhononMomentum w_proposal {};
     int ph_index {-1};
 
     bool incoming_before_outgoing {true};

@@ -188,8 +188,7 @@ double rm_ext_ph_update::attempt(){
         };
         const double weight_current {
             this->cfg->diagram_head->right_component.trace() *
-            Coupling::Strength::compute(w_to_reject, ph_mode_energy, ph_mode_diel_response) *
-            Coupling::Strength::compute(w_to_reject, ph_mode_energy, ph_mode_diel_response) *
+            Coupling::Strength::squaredTimesMomentumSquared(ph_mode_energy, ph_mode_diel_response) *
             std::exp(-ph_mode_energy*(cfg->current_tau_length - tau_two + tau_one))
         };
 
@@ -201,8 +200,7 @@ double rm_ext_ph_update::attempt(){
             std::pow(2.*std::numbers::pi, 3) *
             weight_proposed *
             ph_mode_energy * ph_mode_energy * std::exp(-ph_mode_energy*(cfg->current_tau_length - tau_two + tau_one)) *
-            std::pow((cfg->current_tau_length - tau_two + tau_one)/(2*std::numbers::pi), 1.5) *
-            std::exp(-((w_to_reject[0]*w_to_reject[0] + w_to_reject[1]*w_to_reject[1] + w_to_reject[2]*w_to_reject[2])/2.)*(cfg->current_tau_length -tau_two + tau_one))
+            w_proposal.sphericalDensity(w_to_reject, cfg->current_tau_length - tau_two + tau_one)
         };
 
         const double denominator {
@@ -387,8 +385,7 @@ double rm_ext_ph_update::attempt(){
         };
         const double weight_current {
             this->cfg->diagram_head->right_component.trace() *
-            Coupling::Strength::compute(w_to_reject, ph_mode_energy, ph_mode_diel_response) *
-            Coupling::Strength::compute(w_to_reject, ph_mode_energy, ph_mode_diel_response) *
+            Coupling::Strength::squaredTimesMomentumSquared(ph_mode_energy, ph_mode_diel_response) *
             std::exp(-ph_mode_energy*(cfg->current_tau_length - tau_two + tau_one))
         };
 
@@ -400,8 +397,7 @@ double rm_ext_ph_update::attempt(){
             std::pow(2.*std::numbers::pi, 3) *
             weight_proposed *
             ph_mode_energy * ph_mode_energy * std::exp(-ph_mode_energy*(cfg->current_tau_length - tau_two + tau_one)) *
-            std::pow((cfg->current_tau_length - tau_two + tau_one)/(2*std::numbers::pi), 1.5) *
-            std::exp(-((w_to_reject[0]*w_to_reject[0] + w_to_reject[1]*w_to_reject[1] + w_to_reject[2]*w_to_reject[2])/2.)*(cfg->current_tau_length -tau_two + tau_one))
+            w_proposal.sphericalDensity(w_to_reject, cfg->current_tau_length - tau_two + tau_one)
         };
 
         const double denominator {

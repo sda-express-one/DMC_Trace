@@ -127,11 +127,12 @@ double rm_int_ph_update::attempt(){
 
     const double weight_current {
         this->cfg->diagram_head->right_component.trace() *
-        Coupling::Strength::compute(w_to_reject, ptr_one->ph_energy, ptr_one->diel_response) * 
-            Coupling::Strength::compute(w_to_reject, ptr_one->ph_energy, ptr_one->diel_response) *
+        Coupling::Strength::squaredTimesMomentumSquared(ptr_one->ph_energy, ptr_one->diel_response) *
             std::exp(-ptr_one->ph_energy*(ptr_two->tau - ptr_one->tau))
     };
 
+    // inverse of add_int_ph's ratio, with the momentum per dr dOmega in the same way: |g|^2|w|^2 for the
+    // line and the sphericalDensity of the proposal that would have drawn w_to_reject
     const double p_A {static_cast<double>(this->cfg->internal_ph_manager->current_length)/2.};
     const double p_B {static_cast<double>(this->cfg->internal_ph_manager->current_length + this->cfg->external_ph_manager->current_length - 1)};
 
@@ -140,8 +141,7 @@ double rm_int_ph_update::attempt(){
         weight_proposed *
         ptr_one->ph_energy * std::exp(-ptr_one->ph_energy*(tau_two - tau_one)) *
         std::pow(2.*std::numbers::pi, 3) *
-        std::pow((tau_two - tau_one)/(2*std::numbers::pi), 1.5) *
-        std::exp(-((w_to_reject[0]*w_to_reject[0]+w_to_reject[1]*w_to_reject[1]+w_to_reject[2]*w_to_reject[2])/2.)*(tau_two - tau_one))
+        this->w_proposal.sphericalDensity(w_to_reject, tau_two - tau_one)
     };
 
     const double tau_init_v1 {ptr_one->prev->tau};

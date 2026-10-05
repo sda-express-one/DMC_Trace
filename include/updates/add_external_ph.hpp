@@ -10,6 +10,7 @@
 #include "diagram/diagram_config.hpp"
 #include "diagram/vertex.hpp"
 #include "comp_method/weight_computation.hpp"
+#include "utils/prop_distribs.hpp"
 
 struct add_ext_ph_update {
     diagram_cfg * const cfg {nullptr};
@@ -21,6 +22,7 @@ struct add_ext_ph_update {
     double tau_one {0.};
     double tau_two {0.};
     int ph_index {-1};
+    proposal::PhononMomentum w_proposal {};
     std::array<double, 3> w_proposed {0., 0., 0.};
 
     // set in attempt(), read back in accept(): true for case 1 (incoming/-2 before
