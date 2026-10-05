@@ -1,4 +1,4 @@
-// A Metropolis chain with all seven updates, sanitized after EVERY accepted move.
+// A Metropolis chain with all eight updates, sanitized after EVERY accepted move.
 //
 // numerical::sanitizeDiagram checks the structure (links, tau ordering, tau_next == next->tau, tail at
 // current_tau_length), the lines and their manager registration, momentum conservation at every
@@ -21,14 +21,15 @@
 #include "updates/swp_ph.hpp"
 #include "updates/mv_vertex.hpp"
 #include "updates/chg_tau.hpp"
+#include "updates/chg_ph_momentum.hpp"
 
 int main(){
     test::Checks check {"sanitizer after every accepted move, all updates"};
     test::setLK(test::AlAs);
 
-    const char * name[7] {"add_int", "rm_int", "add_ext", "rm_ext", "swp", "mv_tau", "chg_tau"};
-    const long min_accepted[7] {500, 500, 300, 300, 30, 1000, 10000};
-    long accepted[7] {}, nonfinite[7] {}, dirty[7] {};
+    const char * name[8] {"add_int", "rm_int", "add_ext", "rm_ext", "swp", "mv_tau", "chg_tau", "chg_w"};
+    const long min_accepted[8] {500, 500, 300, 300, 30, 1000, 10000, 1000};
+    long accepted[8] {}, nonfinite[8] {}, dirty[8] {};
     long sanitized {0}, with_external {0}, max_internal {0}, max_external {0};
     double worst_overlap {0.}, worst_trace {0.};
 
@@ -38,20 +39,21 @@ int main(){
         add_int_ph_update addi {cfg, &d.rng};  rm_int_ph_update rmi {cfg, &d.rng};
         add_ext_ph_update adde {cfg, &d.rng};  rm_ext_ph_update rme {cfg, &d.rng};
         swp_ph_update swp {cfg, &d.rng};       mv_tau_update mv {cfg, &d.rng};     chg_tau_update ch {cfg, &d.rng};
+        chg_ph_momentum chw {cfg, &d.rng};
         std::uniform_real_distribution<double> u {0., 1.};
-        std::uniform_int_distribution<int> pick {0, 6};
+        std::uniform_int_distribution<int> pick {0, 7};
 
         for (long step {0}; step < 300000; ++step) {
             const int w {pick(d.rng)};
             double r {-1.};
             switch (w) { case 0: r = addi.attempt(); break; case 1: r = rmi.attempt(); break; case 2: r = adde.attempt(); break;
                          case 3: r = rme.attempt(); break; case 4: r = swp.attempt(); break; case 5: r = mv.attempt(); break;
-                         default: r = ch.attempt(); }
+                         case 6: r = ch.attempt(); break; default: r = chw.attempt(); }
             if (!std::isfinite(r)) { ++nonfinite[w]; }
             if (!(r > 0. && u(d.rng) < r)) { continue; }
             switch (w) { case 0: addi.accept(); break; case 1: rmi.accept(); break; case 2: adde.accept(); break;
                          case 3: rme.accept(); break; case 4: swp.accept(); break; case 5: mv.accept(); break;
-                         default: ch.accept(); }
+                         case 6: ch.accept(); break; default: chw.accept(); }
             ++accepted[w];
 
             const numerical::SanitizeReport rep {numerical::sanitizeDiagram(cfg)};
@@ -65,7 +67,7 @@ int main(){
         }
     }
 
-    for (int i {0}; i < 7; ++i) {
+    for (int i {0}; i < 8; ++i) {
         check(dirty[i] == 0 && nonfinite[i] == 0 && accepted[i] >= min_accepted[i],
               "%-8s accepted %6ld (need >= %ld)   dirty after it %ld   non-finite ratios %ld",
               name[i], accepted[i], min_accepted[i], dirty[i], nonfinite[i]);
