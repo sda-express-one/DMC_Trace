@@ -278,8 +278,9 @@ void add_int_ph_update::accept(){
     v_one->conj_vertex = v_two;
     v_two->conj_vertex = v_one;
 
-    // vertex_strength_component depends only on each vertex's own w/ph_energy/diel_response/eff_masses,
-    // all of which are now set - so it only needs computing on the two new vertices.
+    // vertex_strength_component depends only on each vertex's own w/ph_energy/diel_response (the
+    // eff_masses it is passed cancel identically), all of which are now set - so it only needs
+    // computing on the two new vertices.
     v_one->vertexStrength();
     v_two->vertexStrength();
 
