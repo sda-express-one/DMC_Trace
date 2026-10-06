@@ -5,7 +5,7 @@
 #include <cstdio>
 #include <span>
 #include <stdexcept>
-#include "comp_method/weight_computation.hpp"
+#include "measurements/measurement_utils.hpp"
 
 green_func_measurement::green_func_measurement(diagram_cfg * cfg, std::array<double, 3> p, int n_bins, int boundary_phonons,
                                                std::size_t n_batches)
@@ -63,30 +63,8 @@ void green_func_measurement::measure(){
     acc.accumulate(std::span(vals.data(), k), std::span(idxs.data(), k));
 }
 
-long double green_func_measurement::order0Integral() const {
-    // order-0 weight: tr e^{-H_LK(p) tau} e^{mu tau} = sum_n e^{-(E_n - mu) tau}, E_n = |p|^2 lambda_n
-    // (the masses the diagram uses are 1/(2 lambda_n), and E = k^2/(2m)); the band order is irrelevant here
-    const Eigen::Matrix<double, 4, 3> eig {weight::LKMatrix::diagonalizeLKHamiltonian(p)};
-    const long double p_sq {static_cast<long double>(p[0])*p[0] + static_cast<long double>(p[1])*p[1] + static_cast<long double>(p[2])*p[2]};
-    long double z0 {0.0L};
-    for (int n {0}; n < 3; ++n) {
-        const long double rate {p_sq * static_cast<long double>(eig(0, n)) - static_cast<long double>(cfg->chem_pot)};
-        assert(rate > 0.0L);   // E_n >= 0 and mu < 0
-        z0 += -std::expm1(-rate * static_cast<long double>(tau_max)) / rate;
-    }
-    return z0;
-}
-
-long double green_func_measurement::binCentre(int bin) const {
-    return (static_cast<long double>(bin) + 0.5L) * static_cast<long double>(bin_width);
-}
-
-long double green_func_measurement::binScale(int bin) const {
-    return std::exp(-static_cast<long double>(cfg->chem_pot) * static_cast<long double>(bin) * static_cast<long double>(bin_width));
-}
-
 Eigen::VectorXd green_func_measurement::unscaled(const Eigen::VectorXd & x) const {
-    const double norm {static_cast<double>(order0Integral()) / bin_width / x(9*n_bins)};
+    const double norm {static_cast<double>(measurement::order0Integral(p, cfg->chem_pot, tau_max)) / bin_width / x(9*n_bins)};
     Eigen::VectorXd out(10*n_bins);
     for (int b {0}; b < n_bins; ++b) {
         for (int i {0}; i < 9; ++i) { out(9*b + i) = norm * x(9*b + i); }
@@ -106,7 +84,7 @@ green_func_measurement::result green_func_measurement::normalised() const {
     r.trace.resize(static_cast<std::size_t>(n_bins));
     r.trace_error.resize(static_cast<std::size_t>(n_bins));
     for (int b {0}; b < n_bins; ++b) {
-        const long double s {binScale(b)};
+        const long double s {measurement::binScale(b, bin_width, cfg->chem_pot)};
         const auto bb {static_cast<std::size_t>(b)};
         for (int i {0}; i < 9; ++i) {
             r.mean[bb][static_cast<std::size_t>(i)] = s * mean(9*b + i);
@@ -129,12 +107,12 @@ void green_func_measurement::write(const std::string & path) const {
     std::fprintf(f, "# tau_max = %.10f   n_bins = %d   bin_width = %.10f   mu = %.10f\n", tau_max, n_bins, bin_width, cfg->chem_pot);
     std::fprintf(f, "# n_samples = %llu   n_selected = %llu   n_order0 = %llu   Z_0 = %.18Le   batches = %zu x %llu samples\n",
                  static_cast<unsigned long long>(acc.count()), static_cast<unsigned long long>(n_selected),
-                 static_cast<unsigned long long>(n_order0), order0Integral(), acc.batches().size(),
+                 static_cast<unsigned long long>(n_order0), measurement::order0Integral(p, cfg->chem_pot, tau_max), acc.batches().size(),
                  static_cast<unsigned long long>(acc.batch_count()));
     std::fprintf(f, "# columns: tau_centre hits  G_00 err  G_01 err  G_02 err  G_10 err  G_11 err  G_12 err  G_20 err  G_21 err  G_22 err  trace err\n");
     for (int b {0}; b < n_bins; ++b) {
         const auto bb {static_cast<std::size_t>(b)};
-        std::fprintf(f, "%.10Le %llu", binCentre(b), static_cast<unsigned long long>(hits[bb]));
+        std::fprintf(f, "%.10Le %llu", measurement::binCentre(b, bin_width), static_cast<unsigned long long>(hits[bb]));
         for (std::size_t i {0}; i < 9; ++i) { std::fprintf(f, " %.15Le %.6Le", r.mean[bb][i], r.error[bb][i]); }
         std::fprintf(f, " %.15Le %.6Le\n", r.trace[bb], r.trace_error[bb]);
     }

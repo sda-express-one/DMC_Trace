@@ -23,7 +23,7 @@
 // The factor e^{mu tau_D} is a sampling device only and is removed exactly, per sample, in two parts:
 // e^{-mu (tau_D - tau_b)} with tau_b the left edge of the sample's bin is applied when accumulating
 // (bounded by e^{|mu| bin_width}, so nothing large ever enters the statistics), and the per-bin
-// constant e^{-mu tau_b} (binScale) is applied to the results after the jackknife, in long double.
+// constant e^{-mu tau_b} (measurement::binScale) is applied to the results after the jackknife, in long double.
 //
 // Boundary phonons: each external line is a phonon present at tau = 0 = tau_D, and with m of them the
 // end segments carry p - sum(w), not p. boundary_phonons selects which diagrams are accumulated:
@@ -78,12 +78,6 @@ struct green_func_measurement {
                            std::size_t n_batches = 256);
 
     void measure();
-
-    // Z_0 = int_0^tau_max tr G0(p, tau) e^{mu tau} dtau = sum_n (1 - e^{-(E_n - mu) tau_max}) / (E_n - mu)
-    long double order0Integral() const;
-
-    long double binCentre(int bin) const;
-    long double binScale(int bin) const;   // e^{-mu tau_b}, tau_b = left edge of the bin
 
     // The estimator before binScale, as a function of the batch means x: entries [9*bin + 3*n + m] are
     // the components, entries [9*n_bins + bin] the traces.
