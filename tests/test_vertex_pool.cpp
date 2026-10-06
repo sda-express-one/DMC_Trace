@@ -6,6 +6,7 @@
 //   - used slots are exactly [0, current_length), with position == slot index == vertex->index;
 //   - .conjugated is mutual, and every line sits in one aligned slot pair (2m, 2m+1);
 //   - .conjugated agrees with Vertex::conj_vertex;
+//   - the creation vertex (type > 0) of each line sits in the even slot, the annihilation one in the odd;
 //   - the registered vertices are exactly the live ones (no vertex lost, none removed but still there).
 // Includes the specific sequence that corrupted the pool before exchangeLines existed: three lines,
 // an exchange between the second and third, then removal of a line that no longer sits in the last pair.
@@ -13,6 +14,7 @@
 #include <random>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 #include "test_common.hpp"
 
@@ -25,6 +27,7 @@ static std::string violation(const VertexPointerManager & m, const std::set<Vert
         if (s.conjugated == nullptr || s.conjugated->conjugated != &s) { return "slot " + std::to_string(i) + " conjugated not mutual"; }
         if (s.conjugated - m.ptr_vertex_pool != (i ^ 1)) { return "slot " + std::to_string(i) + " not in an aligned pair"; }
         if (s.conjugated->linked_vertex != s.linked_vertex->conj_vertex) { return "slot " + std::to_string(i) + " disagrees with conj_vertex"; }
+        if ((s.linked_vertex->type > 0) != (i % 2 == 0)) { return "slot " + std::to_string(i) + " holds the wrong kind of vertex"; }
         registered.insert(s.linked_vertex);
     }
     for (int i {m.current_length}; i < m.max_length; ++i) {
@@ -34,10 +37,12 @@ static std::string violation(const VertexPointerManager & m, const std::set<Vert
     return "";
 }
 
-// what swp_ph::accept() does to the pool: diagram-level conj_vertex rewiring, then the manager's relink
+// what swp_ph::accept() does to the pool: swap of the two vertices' types and diagram-level
+// conj_vertex rewiring, then the manager's relink
 static void exchange(VertexPointerManager & m, Vertex * p1, Vertex * p2){
     Vertex * d1 {p1->conj_vertex};
     Vertex * d2 {p2->conj_vertex};
+    std::swap(p1->type, p2->type);
     p1->conj_vertex = d2; p2->conj_vertex = d1; d1->conj_vertex = p2; d2->conj_vertex = p1;
     m.exchangeLines(p1, p2);
 }
@@ -61,6 +66,7 @@ int main(){
         std::set<Vertex *> live;
         for (int l {0}; l < 3; ++l) {
             v[2*l].conj_vertex = &v[2*l + 1]; v[2*l + 1].conj_vertex = &v[2*l];
+            v[2*l].type = +1; v[2*l + 1].type = -1;
             m.addVertexPointers(&v[2*l], &v[2*l + 1]);
             live.insert(&v[2*l]); live.insert(&v[2*l + 1]);
         }
@@ -89,6 +95,7 @@ int main(){
             if (op == 0 && m.current_length + 2 <= m.max_length) {
                 Vertex * a {&store[next++]}; Vertex * b {&store[next++]};
                 a->conj_vertex = b; b->conj_vertex = a;
+                a->type = +1; b->type = -1;
                 m.addVertexPointers(a, b);
                 live.insert(a); live.insert(b);
                 ++adds;

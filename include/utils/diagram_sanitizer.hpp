@@ -41,7 +41,8 @@ namespace numerical {
         int broken_links {0};   // prev/next mismatch, tau ordering, tau_next != next->tau, tail tau,
                                 // or the walk did not reach the tail within max_vertices
         int bad_lines {0};      // conj_vertex / type / w / ph_energy mismatch, internal line ordered
-                                // backwards in tau, or vertex not (correctly) registered in its manager
+                                // backwards in tau, vertex not (correctly) registered in its manager,
+                                // or in the wrong slot of its pair (creation must be even, annihilation odd)
 
         // momentum: |k_v - (k_prev - sgn(type_v) * w_v)|, the rule every update follows
         double max_momentum_residual {0.};
@@ -138,7 +139,8 @@ namespace numerical {
             if (v->index < 0 || v->index >= m->current_length
                 || m->ptr_vertex_pool[v->index].linked_vertex != v
                 || m->ptr_vertex_pool[v->index].conjugated == nullptr
-                || m->ptr_vertex_pool[v->index].conjugated->linked_vertex != cj) {
+                || m->ptr_vertex_pool[v->index].conjugated->linked_vertex != cj
+                || (c > 0) != (v->index % 2 == 0)) {
                 ++rep.bad_lines;
             }
 

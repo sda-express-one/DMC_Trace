@@ -18,6 +18,12 @@ struct VertexPointer {
 // removeVertexPointers relies on it (it fills a hole by moving the last pair down as a unit), and
 // exchangeLines preserves it. Code outside this struct must not write .conjugated or
 // .linked_vertex directly - relink lines through exchangeLines instead.
+//
+// Within a pair, slot 2m holds the line's creation vertex (type > 0: +1 internal, +2 external) and
+// slot 2m+1 its annihilation vertex (type < 0). addVertexPointers takes them in that order,
+// removeVertexPointers moves pairs as a unit, and exchangeLines expects the caller to have swapped
+// the two vertices' types already (as swp_ph does), so each slot keeps its type. Code may therefore
+// visit one vertex of each line, of a known kind, as the even (or odd) slots of [0, current_length).
 struct VertexPointerManager {
     const int max_length {0};
     int current_length {0};
@@ -44,6 +50,7 @@ struct VertexPointerManager {
         assert(vertex_two != nullptr);
         assert(current_length % 2 == 0);
         assert(current_length < max_length + 1);
+        assert(vertex_one->type > 0 && vertex_two->type < 0); // creation first: see the layout comment
 
         if(current_length + 2 > max_length){
             return;
@@ -87,6 +94,10 @@ struct VertexPointerManager {
         slot_b->linked_vertex = vertex_a;
         vertex_b->index = slot_a->position;
         vertex_a->index = slot_b->position;
+
+        // the caller swaps the two vertices' types before relinking, so each slot keeps its kind
+        assert((vertex_a->type > 0) == (vertex_a->index % 2 == 0));
+        assert((vertex_b->type > 0) == (vertex_b->index % 2 == 0));
     }
 
     void removeVertexPointers(VertexPointer& pointer_one, VertexPointer& pointer_two){
@@ -103,10 +114,12 @@ struct VertexPointerManager {
         assert(pointer_one.position / 2 == pointer_two.position / 2);
         assert(ptr_vertex_pool[current_length - 2].conjugated == &ptr_vertex_pool[current_length - 1]);
 
-        if(pointer_one.position != current_length - 2 && pointer_two.position != current_length - 1){
-            const int position_one {pointer_one.position};
-            const int position_two {pointer_two.position};
+        // fill the hole by the pair's own slots, even (creation) first, whichever of the two the
+        // caller passed as pointer_one - so the last pair moves down with its order intact
+        const int position_one {pointer_one.position - pointer_one.position % 2};
+        const int position_two {position_one + 1};
 
+        if(position_one != current_length - 2){
             ptr_vertex_pool[position_one].linked_vertex = ptr_vertex_pool[current_length-2].linked_vertex;
             ptr_vertex_pool[position_two].linked_vertex = ptr_vertex_pool[current_length-1].linked_vertex;
 
@@ -155,19 +168,18 @@ struct VertexPointerManager {
         return &ptr_vertex_pool[select(*rng)];
     }
 
+    // A uniformly chosen line's creation vertex (type > 0): by the layout rule, the even slot of its
+    // pair - so no rejection on the type is needed, and each line is returned with probability
+    // 1/(current_length/2).
     VertexPointer * chooseOutgoingVertex() {
-        int type {0};
-        int position {-1};
+        assert(current_length >= 2 && current_length % 2 == 0);
         assert(current_length <= max_length);
-        std::uniform_int_distribution<int> select {0, current_length - 1};
+        std::uniform_int_distribution<int> select {0, current_length/2 - 1};
 
-        do {
-            position = select(*rng);
-            assert(ptr_vertex_pool[position].linked_vertex != nullptr);
-            type = ptr_vertex_pool[position].linked_vertex->type;
-        } while (type < 1);
+        VertexPointer * slot {&ptr_vertex_pool[2*select(*rng)]};
+        assert(slot->linked_vertex != nullptr && slot->linked_vertex->type > 0);
 
-        return &ptr_vertex_pool[position];
+        return slot;
     }
 };
 
