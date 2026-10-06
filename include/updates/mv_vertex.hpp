@@ -7,11 +7,13 @@
 #include <simplemc/random/xoshiro256.hpp>
 #include "diagram/vertex.hpp"
 #include "diagram/diagram_config.hpp"
+#include "utils/sign_counter.hpp"
 #include "comp_method/weight_computation.hpp"
 
 struct mv_tau_update {
     diagram_cfg * const cfg;
     simplemc::xoshiro256ss* rng;
+    SignCounter sign;   // sign of the ratio, negative-diagram count (utils/sign_counter.hpp)
     mutable std::uniform_real_distribution<double> std_unif {0.,1.};
     Vertex * vertex {nullptr};
     Eigen::Matrix3d new_action_el_incoming {Eigen::Matrix3d::Identity()};
@@ -141,7 +143,7 @@ struct mv_tau_update {
             band_normalised(energies_incoming, lowest_energy_incoming, tau_proposed - tau_prev),
             band_normalised(energies_outgoing, lowest_energy_outgoing, tau_next - tau_proposed))};
 
-        return diagram_weight_proposed / diagram_weight_current;
+        return sign.take(diagram_weight_proposed / diagram_weight_current);
     }
 
     void accept(){
@@ -155,6 +157,12 @@ struct mv_tau_update {
         weight::LKMatrix::computeLeftSide(this->cfg->diagram_tail, this->vertex->prev);
 
         std::abs(this->vertex->type) % 2 == 1 ? this->vertex->computeInternalPhPropAction() : this->vertex->computeExternalPhPropAction(this->cfg->diagram_tail->tau);
+
+        sign.accepted(cfg);
+    }
+
+    void reject(){
+        sign.rejected(cfg);
     }
 };
 

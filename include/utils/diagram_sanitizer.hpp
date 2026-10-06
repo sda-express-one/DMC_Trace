@@ -60,6 +60,9 @@ namespace numerical {
         double trace_before {0.};       // diagram_head->right_component.trace() as found
         double trace_after {0.};        // ... after the rebuild
 
+        // cfg->current_sign disagreed with the sign of the rebuilt trace (it is then repaired)
+        bool sign_mismatch {false};
+
         bool rebuilt {false};
 
         double relativeTraceChange() const {
@@ -72,6 +75,7 @@ namespace numerical {
                 && max_momentum_residual <= tol.momentum
                 && max_basis_dev <= tol.exact && max_mass_dev <= tol.exact && max_action_dev <= tol.exact
                 && closing_basis_dev <= tol.flip
+                && !sign_mismatch
                 && relativeTraceChange() <= tol.flip;
         }
     };
@@ -193,6 +197,12 @@ namespace numerical {
         weight::LKMatrix::computeLeftSide(tail, head);
         rep.rebuilt = true;
         rep.trace_after = head->right_component.trace();
+
+        // the sign the updates track is cached state too: check it against the rebuilt trace, and set it
+        // (a hand-built diagram starts with the default +1, whatever its trace)
+        const int sign_after {rep.trace_after < 0. ? -1 : 1};
+        rep.sign_mismatch = cfg->current_sign != sign_after;
+        cfg->current_sign = sign_after;
 
         return rep;
     }

@@ -154,7 +154,7 @@ double rm_int_ph_update::attempt(){
         Coupling::Parameters::V_unit_cell
     };
 
-    return numerator/denominator;
+    return sign.take(numerator/denominator);
 }
 
 void rm_int_ph_update::accept(){
@@ -211,4 +211,6 @@ void rm_int_ph_update::accept(){
 
     weight::LKMatrix::computeRightSide(cfg->diagram_head, last_survivor->next);
     weight::LKMatrix::computeLeftSide(cfg->diagram_tail, ptr_prev);
+
+    sign.accepted(cfg);
 }

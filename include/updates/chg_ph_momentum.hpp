@@ -6,12 +6,14 @@
 #include <vector>
 #include <simplemc/random/xoshiro256.hpp>
 #include "diagram/diagram_config.hpp"
+#include "utils/sign_counter.hpp"
 #include "comp_method/weight_computation.hpp"
 #include "utils/prop_distribs.hpp"
 
 struct chg_ph_momentum {
     diagram_cfg * const cfg {nullptr};
     simplemc::xoshiro256ss* rng {nullptr};
+    SignCounter sign;   // sign of the ratio, negative-diagram count (utils/sign_counter.hpp)
     Vertex * ptr_one {nullptr};
     Vertex * ptr_two {nullptr};
     proposal::PhononMomentum w_proposal {};
@@ -42,6 +44,8 @@ struct chg_ph_momentum {
     double attempt();
 
     void accept();
+
+    void reject(){ sign.rejected(cfg); }
 };
 
 #endif // !CHG_PH_MOMENTUM_HPP

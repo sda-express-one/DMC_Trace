@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <array>
+#include <cstdint>
 #include "diagram/vertex.hpp"
 #include "diagram/vertex_manager.hpp"
 #include "diagram/phonon_manager.hpp"
@@ -26,6 +27,17 @@ struct diagram_cfg {
     const double chem_pot {-1.};
 
     double current_tau_length {1.};
+
+    // Sign of the current diagram, sign(diagram_head->right_component.trace()) (every other factor of
+    // the weight is positive). The updates return |ratio| and multiply it by the sign of their ratio
+    // on accept (SignCounter, utils/sign_counter.hpp); the order-0 start is positive.
+    int current_sign {1};
+    // MC steps that ended on a negative diagram; positives = steps - n_negative. Incremented by
+    // countSign(), to be called once per step, e.g. from simplemc's run loop:
+    //     simplemc::run_callbacks{ .on_step = [&](const auto &){ cfg.countSign(); } }
+    std::uint64_t n_negative {0};
+
+    void countSign() { if (current_sign < 0) { ++n_negative; } }
 
     diagram_cfg(
             std::array<double, 3> k_init = {0, 0, 0},

@@ -6,6 +6,7 @@
 #include <random>
 #include <simplemc/random/xoshiro256.hpp>
 #include "diagram/diagram_config.hpp"
+#include "utils/sign_counter.hpp"
 #include "diagram/vertex.hpp"
 #include "comp_method/weight_computation.hpp"
 
@@ -14,6 +15,7 @@ struct swp_ph_update {
     diagram_cfg * const cfg {nullptr};
 
     simplemc::xoshiro256ss * rng {nullptr};
+    SignCounter sign;   // sign of the ratio, negative-diagram count (utils/sign_counter.hpp)
     mutable std::uniform_real_distribution<double> std_unif {0.,1.};
  
     Vertex * ptr_one {nullptr};
@@ -39,6 +41,8 @@ struct swp_ph_update {
     double attempt();
 
     void accept();
+
+    void reject(){ sign.rejected(cfg); }
 };
 
 #endif // !SWP_PH_HPP

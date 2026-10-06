@@ -209,7 +209,7 @@ double rm_ext_ph_update::attempt(){
             Coupling::Parameters::V_unit_cell
         };
 
-        return numerator/denominator;
+        return sign.take(numerator/denominator);
     }
     else {
         // mirrors add_ext_ph_update's case 2, reverted: beginning [diagram_head...ptr_two->prev]
@@ -406,7 +406,7 @@ double rm_ext_ph_update::attempt(){
             Coupling::Parameters::V_unit_cell
         };
 
-        return numerator/denominator;
+        return sign.take(numerator/denominator);
     }
 }
 
@@ -549,4 +549,6 @@ void rm_ext_ph_update::accept(){
 
     weight::LKMatrix::computeRightSide(cfg->diagram_head, cfg->diagram_tail);
     weight::LKMatrix::computeLeftSide(cfg->diagram_tail, cfg->diagram_head);
+
+    sign.accepted(cfg);
 }

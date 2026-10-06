@@ -252,7 +252,7 @@ double add_ext_ph_update::attempt(){
             w_proposal.sphericalDensity(w_proposed, cfg->current_tau_length - tau_two + tau_one)
         };
 
-        return numerator/denominator;
+        return sign.take(numerator/denominator);
 
     }
     else {
@@ -479,7 +479,7 @@ double add_ext_ph_update::attempt(){
             w_proposal.sphericalDensity(w_proposed, cfg->current_tau_length - tau_two + tau_one)
         };
 
-        return numerator/denominator;
+        return sign.take(numerator/denominator);
     }
 }
 
@@ -707,4 +707,6 @@ void add_ext_ph_update::accept(){
     // to bound the recomputation to, so the whole diagram's cache needs refreshing.
     weight::LKMatrix::computeRightSide(cfg->diagram_head, cfg->diagram_tail);
     weight::LKMatrix::computeLeftSide(cfg->diagram_tail, cfg->diagram_head);
+
+    sign.accepted(cfg);
 }

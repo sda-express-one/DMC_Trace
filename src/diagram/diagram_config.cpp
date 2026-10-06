@@ -63,7 +63,10 @@ diagram_cfg::diagram_cfg(diagram_cfg&& other) noexcept :
     max_order_ext(other.max_order_ext),
     max_vertices(other.max_vertices),
     tau_max(other.tau_max),
-    chem_pot(other.chem_pot)
+    chem_pot(other.chem_pot),
+    current_tau_length(other.current_tau_length),
+    current_sign(other.current_sign),
+    n_negative(other.n_negative)
 {
     other.vertex_pool = nullptr;
     other.free_stack = nullptr;

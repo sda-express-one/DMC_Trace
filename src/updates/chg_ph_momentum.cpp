@@ -97,8 +97,8 @@ double chg_ph_momentum::attempt(){
             new_matrix_product = proposed_weights[j].vertex_wf_component * proposed_weights[j].el_prop_action * new_matrix_product;
         }
 
-        return momentumRatio(w_proposal, (new_matrix_product * ptr_two->right_component * ptr_one->left_component).trace(), cfg->diagram_head->right_component.trace(),
-                             w_current, w_proposed, tau_two - tau_one);
+        return sign.take(momentumRatio(w_proposal, (new_matrix_product * ptr_two->right_component * ptr_one->left_component).trace(), cfg->diagram_head->right_component.trace(),
+                             w_current, w_proposed, tau_two - tau_one));
     }
     else {
         chosen_vertex -= cfg->internal_ph_manager->current_length;
@@ -216,8 +216,8 @@ double chg_ph_momentum::attempt(){
             }
 
             
-            return momentumRatio(w_proposal, new_matrix_product.trace(), cfg->diagram_head->right_component.trace(),
-                                 w_current, w_proposed, tau_length);
+            return sign.take(momentumRatio(w_proposal, new_matrix_product.trace(), cfg->diagram_head->right_component.trace(),
+                                 w_current, w_proposed, tau_length));
         }
         else {
             branch = Branch::external_cre_first;
@@ -314,8 +314,8 @@ double chg_ph_momentum::attempt(){
                 new_matrix_product = proposed_weights[j].vertex_wf_component * proposed_weights[j].el_prop_action * new_matrix_product;
             }
 
-            return momentumRatio(w_proposal, new_matrix_product.trace(), cfg->diagram_head->right_component.trace(),
-                                 w_current, w_proposed, tau_length);
+            return sign.take(momentumRatio(w_proposal, new_matrix_product.trace(), cfg->diagram_head->right_component.trace(),
+                                 w_current, w_proposed, tau_length));
         }
     }
 }
@@ -442,4 +442,6 @@ void chg_ph_momentum::accept(){
         break;
     }
     }
+
+    sign.accepted(cfg);
 }

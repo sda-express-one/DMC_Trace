@@ -197,7 +197,7 @@ double add_int_ph_update::attempt(){
         this->w_proposal.sphericalDensity(w_proposed, this->tau_two - this->tau_one)
     };
 
-    return numerator/denominator;
+    return sign.take(numerator/denominator);
 };
 
 void add_int_ph_update::accept(){
@@ -289,5 +289,7 @@ void add_int_ph_update::accept(){
 
     weight::LKMatrix::computeRightSide(cfg->diagram_head, v_two->next);
     weight::LKMatrix::computeLeftSide(cfg->diagram_tail, v_one->prev);
+
+    sign.accepted(cfg);
 }
 

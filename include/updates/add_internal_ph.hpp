@@ -9,6 +9,7 @@
 #include "diagram/vertex.hpp"
 #include "comp_method/weight_computation.hpp"
 #include "diagram/diagram_config.hpp"
+#include "utils/sign_counter.hpp"
 #include "utils/prop_distribs.hpp"
 
 
@@ -17,6 +18,7 @@ struct add_int_ph_update {
                                         // lifetime - never reseated, so proposed_weights' reserved
                                         // capacity (sized from cfg->max_vertices below) can't go stale
     simplemc::xoshiro256ss * rng {nullptr};
+    SignCounter sign;   // sign of the ratio, negative-diagram count (utils/sign_counter.hpp)
     mutable std::uniform_real_distribution<double> std_unif {0,1};
     Vertex* ptr_one {nullptr};
     Vertex* ptr_two {nullptr};
@@ -52,6 +54,8 @@ struct add_int_ph_update {
     double attempt();
 
     void accept();
+
+    void reject(){ sign.rejected(cfg); }
 };
 
 #endif // !ADD_INTERNAL_PH_HPP

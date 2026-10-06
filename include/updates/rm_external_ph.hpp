@@ -5,6 +5,7 @@
 #include <vector>
 #include <simplemc/random/xoshiro256.hpp>
 #include "diagram/diagram_config.hpp"
+#include "utils/sign_counter.hpp"
 #include "diagram/vertex.hpp"
 #include "comp_method/weight_computation.hpp"
 #include "utils/prop_distribs.hpp"
@@ -13,6 +14,7 @@ struct rm_ext_ph_update {
     diagram_cfg * const cfg {nullptr};
 
     simplemc::xoshiro256ss * rng {nullptr};
+    SignCounter sign;   // sign of the ratio, negative-diagram count (utils/sign_counter.hpp)
     Vertex * ptr_one {nullptr};
     Vertex * ptr_two {nullptr};
     // the proposal add_ext_ph draws w from, for the reverse density
@@ -44,6 +46,8 @@ struct rm_ext_ph_update {
     double attempt();
 
     void accept();
+
+    void reject(){ sign.rejected(cfg); }
 };
 
 #endif // !RM_EXTERNAL_PH_HPP

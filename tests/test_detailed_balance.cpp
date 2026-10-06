@@ -316,7 +316,8 @@ static void chg_w_case(test::Checks & check, const char * label, Line kind){
 // with the half-normal |w| / uniform direction proposal q(w) = h(|w|)/(4 pi |w|^2), whose 1/|w|^2
 // cancels the coupling's. T from the sanitizer's full rebuild, l the line length the proposal uses
 // (tau2 - tau1 internal, L - tau_cre + tau_ann external). Checks attempt() and accept() describe the
-// same diagram.
+// same diagram. attempt() returns |r| and records the sign of r: both are compared, and the move's
+// sign must carry the tracked diagram sign (cfg->current_sign) to the sign of the rebuilt trace.
 static void chg_w_ratio_case(test::Checks & check){
     test::Diagram d {4242ULL, {0.11, -0.07, 0.05}, 24, 8};
     diagram_cfg * cfg {&d.cfg};
@@ -328,7 +329,7 @@ static void chg_w_ratio_case(test::Checks & check){
     std::uniform_int_distribution<int> pick {0, 7};
 
     const char * name[3] {"internal", "external, ann first", "external, cre first"};
-    long checked[3] {}, spanning {0};
+    long checked[3] {}, spanning {0}, sign_errors {0}, negative_moves {0};
     double worst[3] {};
     long dirty {0};
 
@@ -348,6 +349,7 @@ static void chg_w_ratio_case(test::Checks & check){
         }
 
         const double T_before {cfg->diagram_head->right_component.trace()};
+        const int sign_before {cfg->current_sign};
         const double r {chw.attempt()};
         if (!(r > 0. && u(d.rng) < r)) { continue; }
 
@@ -358,13 +360,18 @@ static void chg_w_ratio_case(test::Checks & check){
         if (b == 0 && chw.ptr_one->next != chw.ptr_two) { ++spanning; }
 
         chw.accept();
+        const int sign_tracked {cfg->current_sign};      // before the sanitizer re-derives it
         const numerical::SanitizeReport rep {numerical::sanitizeDiagram(cfg)};
         if (!rep.clean()) { ++dirty; }
 
         const double n_old {w_old[0]*w_old[0] + w_old[1]*w_old[1] + w_old[2]*w_old[2]};
         const double n_new {w_new[0]*w_new[0] + w_new[1]*w_new[1] + w_new[2]*w_new[2]};
         const double expected {rep.trace_after / T_before * std::exp(-(n_old - n_new) * l / 2.)};
-        worst[b] = std::max(worst[b], std::abs(r / expected - 1.));
+        worst[b] = std::max(worst[b], std::abs(r / std::abs(expected) - 1.));
+        const int expected_sign {expected < 0. ? -1 : 1};
+        if (chw.sign.proposed_sign != expected_sign || sign_tracked != sign_before * expected_sign
+            || sign_tracked != (rep.trace_after < 0. ? -1 : 1)) { ++sign_errors; }
+        if (expected_sign < 0) { ++negative_moves; }
         ++checked[b];
     }
 
@@ -374,6 +381,8 @@ static void chg_w_ratio_case(test::Checks & check){
               name[b], checked[b], worst[b]);
     }
     check(spanning >= 100, "internal moves on lines spanning other vertices: %ld", spanning);
+    check(sign_errors == 0, "sign of the ratio and tracked diagram sign vs rebuilt trace: %ld errors over %ld sign-flipping moves",
+          sign_errors, negative_moves);
 }
 
 int main(){

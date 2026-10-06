@@ -77,7 +77,7 @@ double swp_ph_update::attempt(){
 
     const double denominator{(this->cfg->diagram_head->right_component).trace()};
 
-    return numerator/denominator;
+    return sign.take(numerator/denominator);
 }
 
 void swp_ph_update::accept(){
@@ -125,4 +125,6 @@ void swp_ph_update::accept(){
 
     weight::LKMatrix::computeRightSide(cfg->diagram_head, ptr_two->next);
     weight::LKMatrix::computeLeftSide(cfg->diagram_tail, ptr_one);
+
+    sign.accepted(cfg);
 }
