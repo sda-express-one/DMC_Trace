@@ -17,6 +17,15 @@ double add_ext_ph_update::attempt(){
     proposed_weights_end.clear();
     proposed_weights_middle.clear();
 
+    // products of the three regions, each accumulated left to right (time order) as its segments are
+    // staged; the regions themselves are not always staged in time order, hence three accumulators
+    Eigen::Matrix3d beginning_product {Eigen::Matrix3d::Identity()};
+    Eigen::Matrix3d middle_product {Eigen::Matrix3d::Identity()};
+    Eigen::Matrix3d end_product {Eigen::Matrix3d::Identity()};
+    auto fold = [](Eigen::Matrix3d & product, const weight::ProposedVertexWeight & w){
+        product = product * w.vertex_wf_component * w.el_prop_action.diagonal().asDiagonal();
+    };
+
     if(cfg->external_ph_manager->current_length == cfg->external_ph_manager->max_length){
         return -1.;
     }
@@ -86,6 +95,7 @@ double add_ext_ph_update::attempt(){
                 current_new_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[2])*(tau_one - ptr->tau));
 
                 proposed_weights_beginning.push_back(current_new_weight);
+                fold(beginning_product, proposed_weights_beginning.back());
 
                 // the new annihilation vertex at tau_one reverts to ptr_one's ORIGINAL, unshifted
                 // momentum - this is where the "beginning" region ends and the untouched middle begins.
@@ -108,6 +118,7 @@ double add_ext_ph_update::attempt(){
                 }
 
                 proposed_weights_beginning.push_back(ann_weight);
+                fold(beginning_product, proposed_weights_beginning.back());
             }
             else {
                 current_new_weight.el_prop_action(0,0) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[0])*(ptr->tau_next - ptr->tau));
@@ -115,6 +126,7 @@ double add_ext_ph_update::attempt(){
                 current_new_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[2])*(ptr->tau_next - ptr->tau));
 
                 proposed_weights_beginning.push_back(current_new_weight);
+                fold(beginning_product, proposed_weights_beginning.back());
             }
 
             ptr = ptr->next;
@@ -145,6 +157,7 @@ double add_ext_ph_update::attempt(){
                     ptr_two_weight.el_prop_action(2,2) = std::exp(-k_sq/(2*ptr_two_weight.eff_masses[2])*(tau_two - ptr_two->tau));
 
                     proposed_weights_end.push_back(ptr_two_weight);
+                    fold(end_product, proposed_weights_end.back());
                 }
                 // if ptr_two == ptr_one, the [tau_one, tau_two] interval this piece would cover
                 // was already pushed as ann_weight in the beginning walk above - pushing it again
@@ -169,6 +182,7 @@ double add_ext_ph_update::attempt(){
                 creation_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*creation_weight.eff_masses[2])*(ptr_two->tau_next - tau_two));
 
                 proposed_weights_end.push_back(creation_weight);
+                fold(end_product, proposed_weights_end.back());
             }
             else {
                 weight::ProposedVertexWeight current_new_weight;
@@ -187,6 +201,7 @@ double add_ext_ph_update::attempt(){
                 current_new_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[2])*(ptr->tau_next - ptr->tau));
 
                 proposed_weights_end.push_back(current_new_weight);
+                fold(end_product, proposed_weights_end.back());
             }
 
             ptr = ptr->next;
@@ -200,10 +215,6 @@ double add_ext_ph_update::attempt(){
         // left_component/right_component isolates "just the middle": it's folded explicitly here
         // from each untouched vertex's already-cached vertex_wf_component/el_prop_action - no
         // physics recomputation, just reusing cached matrices.
-        Eigen::Matrix3d beginning_product {Eigen::Matrix3d::Identity()};
-        for (const auto & entry : proposed_weights_beginning) {
-            beginning_product = beginning_product * entry.vertex_wf_component * entry.el_prop_action;
-        }
 
         // middle_product: the untouched stretch ptr_one->next .. ptr_two (exclusive), folded from each
         // vertex's cached vertex_wf_component/el_prop_action. Identity when ptr_one->next == ptr_two
@@ -214,15 +225,10 @@ double add_ext_ph_update::attempt(){
         // inside the 1e10 condition cap the division used, and O(1) beyond it. The walk is exact to
         // rounding and, at ~3 ns per vertex against ~530 ns for a 3x3 SVD + solve, also cheaper for
         // any middle shorter than ~160 vertices.
-        Eigen::Matrix3d middle_product {Eigen::Matrix3d::Identity()};
         for (Vertex * ptr_mid {ptr_one->next}; ptr_one != ptr_two && ptr_mid != ptr_two; ptr_mid = ptr_mid->next) {
-            middle_product = middle_product * ptr_mid->vertex_wf_component * ptr_mid->el_prop_action;
+            middle_product = middle_product * ptr_mid->vertex_wf_component * ptr_mid->el_prop_action.diagonal().asDiagonal();
         }
 
-        Eigen::Matrix3d end_product {Eigen::Matrix3d::Identity()};
-        for (const auto & entry : proposed_weights_end) {
-            end_product = end_product * entry.vertex_wf_component * entry.el_prop_action;
-        }
 
         // the phonon's own existence span (per computeExternalPhPropAction's wrap convention) is
         // current_tau_length - tau_two + tau_one, the same length w_proposed was drawn with above.
@@ -323,6 +329,7 @@ double add_ext_ph_update::attempt(){
             }
 
             proposed_weights_beginning.push_back(current_new_weight);
+            fold(beginning_product, proposed_weights_beginning.back());
 
             ptr = ptr->next;
         } while (ptr != ptr_two->next);
@@ -352,6 +359,7 @@ double add_ext_ph_update::attempt(){
         creation_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*creation_weight.eff_masses[2])*(creation_duration_end - tau_two));
 
         proposed_weights_middle.push_back(creation_weight);
+        fold(middle_product, proposed_weights_middle.back());
 
         if (unshared_segment) {
             ptr = ptr_two->next;
@@ -372,6 +380,7 @@ double add_ext_ph_update::attempt(){
                 current_new_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[2])*(ptr->tau_next - ptr->tau));
 
                 proposed_weights_middle.push_back(current_new_weight);
+                fold(middle_product, proposed_weights_middle.back());
 
                 ptr = ptr->next;
             }
@@ -394,6 +403,7 @@ double add_ext_ph_update::attempt(){
             ptr_one_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*ptr_one_weight.eff_masses[2])*(tau_one - ptr_one->tau));
 
             proposed_weights_middle.push_back(ptr_one_weight);
+            fold(middle_product, proposed_weights_middle.back());
         }
 
         // end walk: the new annihilation vertex reverts from double back to single shift
@@ -416,6 +426,7 @@ double add_ext_ph_update::attempt(){
         ann_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*ann_weight.eff_masses[2])*(ptr_one->tau_next - tau_one));
 
         proposed_weights_end.push_back(ann_weight);
+        fold(end_product, proposed_weights_end.back());
 
         ptr = ptr_one->next;
         while (ptr != this->cfg->diagram_tail) {
@@ -435,6 +446,7 @@ double add_ext_ph_update::attempt(){
             current_new_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[2])*(ptr->tau_next - ptr->tau));
 
             proposed_weights_end.push_back(current_new_weight);
+            fold(end_product, proposed_weights_end.back());
 
             ptr = ptr->next;
         }
@@ -444,20 +456,8 @@ double add_ext_ph_update::attempt(){
         // are freshly computed straight from proposed_weights_*; no cached left_component/
         // right_component reuse (and no inversion trick) is needed, since nothing is being reused
         // unchanged from the current diagram.
-        Eigen::Matrix3d beginning_product {Eigen::Matrix3d::Identity()};
-        for (const auto & entry : proposed_weights_beginning) {
-            beginning_product = beginning_product * entry.vertex_wf_component * entry.el_prop_action;
-        }
 
-        Eigen::Matrix3d middle_product {Eigen::Matrix3d::Identity()};
-        for (const auto & entry : proposed_weights_middle) {
-            middle_product = middle_product * entry.vertex_wf_component * entry.el_prop_action;
-        }
 
-        Eigen::Matrix3d end_product {Eigen::Matrix3d::Identity()};
-        for (const auto & entry : proposed_weights_end) {
-            end_product = end_product * entry.vertex_wf_component * entry.el_prop_action;
-        }
 
         // computeExternalPhPropAction's wrap-convention formula (current_tau_length-tau_two+tau_one)
         // is unconditional on case: in case 2 (tau_two < tau_one) it evaluates to MORE than

@@ -33,6 +33,12 @@ double chg_ph_momentum::attempt(){
     std::uniform_int_distribution<int> choose_line {0, current_order/2 - 1};
     const int line {choose_line(*rng)};
 
+    // product of the staged segments, accumulated left to right (in time order) as each one is staged
+    Eigen::Matrix3d new_matrix_product {Eigen::Matrix3d::Identity()};
+    auto fold = [&new_matrix_product](const weight::ProposedVertexWeight & w){
+        new_matrix_product = new_matrix_product * w.vertex_wf_component * w.el_prop_action.diagonal().asDiagonal();
+    };
+
     double k_new_sq {0.};
     Eigen::Matrix<double, 4, 3> eigensolution_wrapper;
     std::array<double, 3> eigenvalues {1., 1., 1.};
@@ -52,7 +58,6 @@ double chg_ph_momentum::attempt(){
         const std::array<double, 3> w_current {ptr_one->w};
 
         Vertex * ptr {ptr_one};
-        int i {0};
 
         while(ptr != ptr_two){
             weight::ProposedVertexWeight current_new_weight;
@@ -80,21 +85,18 @@ double chg_ph_momentum::attempt(){
             current_new_weight.el_prop_action(2,2) = std::exp(-k_new_sq/(2*current_new_weight.eff_masses[2])*(ptr->tau_next - ptr->tau));
 
             proposed_weights.push_back(current_new_weight);
-            
-            ++i;
+            fold(proposed_weights.back());
+
             ptr = ptr->next;
         }
 
+        // ptr_two keeps its own segment, but its incoming overlap changes: it closes the product on the
+        // right (staged overlap-only, for accept())
         weight::ProposedVertexWeight ptr_two_weight;
         ptr_two_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(proposed_weights.back().baseWF, ptr_two->baseWF);
-
-        Eigen::Matrix3d new_matrix_product {ptr_two_weight.vertex_wf_component};
+        new_matrix_product = new_matrix_product * ptr_two_weight.vertex_wf_component;
 
         proposed_weights.push_back(ptr_two_weight);
-
-        for(int j {i-1}; j > -1; --j){
-            new_matrix_product = proposed_weights[j].vertex_wf_component * proposed_weights[j].el_prop_action * new_matrix_product;
-        }
 
         return sign.take(momentumRatio(w_proposal, (new_matrix_product * ptr_two->right_component * ptr_one->left_component).trace(), cfg->diagram_head->right_component.trace(),
                              w_current, w_proposed, tau_two - tau_one));
@@ -115,7 +117,6 @@ double chg_ph_momentum::attempt(){
         const std::array<double, 3> w_current {ptr_one->w};
 
         Vertex * ptr {cfg->diagram_head};
-        int i {0};
 
         if(tau_one < tau_two){
             branch = Branch::external_ann_first;
@@ -145,33 +146,23 @@ double chg_ph_momentum::attempt(){
                 current_weight.el_prop_action(2,2) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[2]))*(ptr->tau_next - ptr->tau));
 
                 proposed_weights.push_back(current_weight);
+                fold(proposed_weights.back());
 
-                ++i;
                 ptr = ptr->next;
             }
 
+            // middle, untouched: ptr_one's own segment with its new incoming overlap (staged
+            // overlap-only, for accept()), then the cached segments up to ptr_two->prev
             weight::ProposedVertexWeight ptr_one_weight;
             ptr_one_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(proposed_weights.back().baseWF, ptr_one->baseWF);
-            
-            Eigen::Matrix3d new_matrix_product {Eigen::Matrix3d::Identity()}; // DA RIFARE, PRENDERE DA ptr_two->prev->el_prop_actio
-            
-            ptr = ptr_two->prev;
-
-            while(ptr != ptr_one){
-                    new_matrix_product = ptr->vertex_wf_component * ptr->el_prop_action * new_matrix_product;
-                    ptr = ptr->prev;
-            }
-            
-            new_matrix_product = ptr_one_weight.vertex_wf_component * ptr_one->el_prop_action * new_matrix_product;
-
+            new_matrix_product = new_matrix_product * ptr_one_weight.vertex_wf_component * ptr_one->el_prop_action.diagonal().asDiagonal();
             proposed_weights.push_back(ptr_one_weight);
 
-            for(int j {i-1}; j > -1; --j){
-                new_matrix_product = proposed_weights[j].vertex_wf_component * proposed_weights[j].el_prop_action * new_matrix_product;
+            for(ptr = ptr_one->next; ptr != ptr_two; ptr = ptr->next){
+                new_matrix_product = new_matrix_product * ptr->vertex_wf_component * ptr->el_prop_action.diagonal().asDiagonal();
             }
-            
+
             ptr = ptr_two;
-            i = 0;
 
             while(ptr != cfg->diagram_tail){
                 weight::ProposedVertexWeight current_weight;
@@ -200,16 +191,12 @@ double chg_ph_momentum::attempt(){
                 current_weight.el_prop_action(2,2) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[2]))*(ptr->tau_next - ptr->tau));
 
                 proposed_weights_ext_second_term.push_back(current_weight);
+                fold(proposed_weights_ext_second_term.back());
 
-                ++i;
                 ptr = ptr->next;
             }
 
-            for(int j {i-1}; j > -1; --j){
-                new_matrix_product = proposed_weights_ext_second_term[j].vertex_wf_component * proposed_weights_ext_second_term[j].el_prop_action * new_matrix_product;
-            }
-
-            
+            // beginning * middle * end: the full diagram in time order
             return sign.take(momentumRatio(w_proposal, new_matrix_product.trace(), cfg->diagram_head->right_component.trace(),
                                  w_current, w_proposed, tau_length));
         }
@@ -243,9 +230,9 @@ double chg_ph_momentum::attempt(){
                 current_weight.el_prop_action(2,2) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[2]))*(ptr->tau_next - ptr->tau));
 
                 proposed_weights.push_back(current_weight);
-                
+                fold(proposed_weights.back());
+
                 ptr = ptr->next;
-                ++i;
             }
             
             while (ptr != ptr_one) {
@@ -270,9 +257,9 @@ double chg_ph_momentum::attempt(){
                 current_weight.el_prop_action(2,2) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[2]))*(ptr->tau_next - ptr->tau));
 
                 proposed_weights.push_back(current_weight);
-                
+                fold(proposed_weights.back());
+
                 ptr = ptr->next;
-                ++i;
             }
 
             while (ptr != cfg->diagram_tail) {
@@ -297,15 +284,9 @@ double chg_ph_momentum::attempt(){
                 current_weight.el_prop_action(2,2) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[2]))*(ptr->tau_next - ptr->tau));
 
                 proposed_weights.push_back(current_weight);
-                
+                fold(proposed_weights.back());
+
                 ptr = ptr->next;
-                ++i;
-            }
-
-            Eigen::Matrix3d new_matrix_product {Eigen::Matrix3d::Identity()};
-
-            for(int j {i-1}; j > -1; --j){
-                new_matrix_product = proposed_weights[j].vertex_wf_component * proposed_weights[j].el_prop_action * new_matrix_product;
             }
 
             return sign.take(momentumRatio(w_proposal, new_matrix_product.trace(), cfg->diagram_head->right_component.trace(),

@@ -70,8 +70,12 @@ double add_int_ph_update::attempt(){
 
     Vertex * ptr {ptr_one};
 
-    int i {0};
-    
+    // product of the staged segments, accumulated left to right as each one is staged
+    Eigen::Matrix3d new_matrix_product {Eigen::Matrix3d::Identity()};
+    auto fold = [&new_matrix_product](const weight::ProposedVertexWeight & w){
+        new_matrix_product = new_matrix_product * w.vertex_wf_component * w.el_prop_action.diagonal().asDiagonal();
+    };
+
     Eigen::Matrix<double, 4, 3> eigensolution_wrapper;
     std::array<double, 3> eigenvalues {1., 1., 1.};
     
@@ -107,7 +111,9 @@ double add_int_ph_update::attempt(){
             second_current_new_weight.el_prop_action(2,2) = std::exp(-k_final_sq/(2*second_current_new_weight.eff_masses[2])*(ptr_two->tau_next - tau_two));
 
             proposed_weights.push_back(current_new_weight);
+            fold(proposed_weights.back());
             proposed_weights.push_back(second_current_new_weight);
+            fold(proposed_weights.back());
         }
         else if(ptr == ptr_one){
             current_new_weight.baseWF = eigensolution_wrapper.block<3,3>(1,0);
@@ -118,6 +124,7 @@ double add_int_ph_update::attempt(){
             current_new_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[2])*(ptr_one->tau_next - this->tau_one));
 
             proposed_weights.push_back(current_new_weight);
+            fold(proposed_weights.back());
         }
         else if(ptr == ptr_two){
             current_new_weight.baseWF = eigensolution_wrapper.block<3,3>(1,0);
@@ -139,7 +146,9 @@ double add_int_ph_update::attempt(){
             second_current_new_weight.el_prop_action(2,2) = std::exp(-k_final_sq/(2*second_current_new_weight.eff_masses[2])*(ptr_two->tau_next - tau_two));
 
             proposed_weights.push_back(current_new_weight);
+            fold(proposed_weights.back());
             proposed_weights.push_back(second_current_new_weight);
+            fold(proposed_weights.back());
         }
         else{
             current_new_weight.baseWF = eigensolution_wrapper.block<3,3>(1,0);
@@ -150,10 +159,10 @@ double add_int_ph_update::attempt(){
             current_new_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[2])*(ptr->tau_next - ptr->tau));
 
             proposed_weights.push_back(current_new_weight);
+            fold(proposed_weights.back());
         }
 
         ptr = ptr->next;
-        ++i;
     } while (ptr != ptr_two->next);
 
     // ptr_one keeps its own identity (unlike ptr_two's other end in rm_internal_ph, nothing here
@@ -166,17 +175,13 @@ double add_int_ph_update::attempt(){
     ptr_one_action_new(1,1) = std::exp(-ptr_one_energies[1]*(this->tau_one - tau_init_v1));
     ptr_one_action_new(2,2) = std::exp(-ptr_one_energies[2]*(this->tau_one - tau_init_v1));
 
-    // fold every proposed_weights entry's wf*action (including the last one's action, unlike
-    // before) - the chain then needs to be closed out on the right by ptr_two->next (skipping
-    // ptr_two's own now-superseded right_component, whose leading factor is its stale action)
-    // and on the left by ptr_one's own (unchanged wf, newly-recomputed action) leading segment.
-    Eigen::Matrix3d new_matrix_product {Eigen::Matrix3d::Identity()};
-    for(int j {i}; j > -1; --j){
-        new_matrix_product = proposed_weights[j].vertex_wf_component * proposed_weights[j].el_prop_action * new_matrix_product;
-    }
+    // new_matrix_product holds every staged entry's wf*action (including the last one's action) - the
+    // chain is closed out on the right by ptr_two->next (skipping ptr_two's own now-superseded
+    // right_component, whose leading factor is its stale action) and on the left by ptr_one's own
+    // (unchanged wf, newly-recomputed action) leading segment.
 
     const double weights_proposed {
-        (new_matrix_product * ptr_two->next->vertex_wf_component * ptr_two->next->right_component * ptr_one->left_component * ptr_one->vertex_wf_component * ptr_one_action_new).trace() *
+        (new_matrix_product * ptr_two->next->vertex_wf_component * ptr_two->next->right_component * ptr_one->left_component * ptr_one->vertex_wf_component * ptr_one_action_new.diagonal().asDiagonal()).trace() *
             Coupling::Strength::squaredTimesMomentumSquared(ph_mode_energy, ph_mode_diel_response) *
             std::exp(-ph_mode_energy*(this->tau_two - this->tau_one))
     };

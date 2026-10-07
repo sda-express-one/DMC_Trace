@@ -67,7 +67,7 @@ double swp_ph_update::attempt(){
     const double numerator {
         (
          proposed_weights[0].vertex_wf_component *
-         proposed_weights[0].el_prop_action *
+         proposed_weights[0].el_prop_action.diagonal().asDiagonal() *
          proposed_weights[1].vertex_wf_component * 
          ptr_two->right_component * 
          ptr_one->left_component

@@ -36,7 +36,11 @@ double rm_int_ph_update::attempt(){
     std::array<double, 3> p_fin {0., 0., 0.};
     double p_fin_sq {0.};
 
-    int i {0};
+    // product of the staged segments, accumulated left to right as each one is staged
+    Eigen::Matrix3d new_matrix_product {Eigen::Matrix3d::Identity()};
+    auto fold = [&new_matrix_product](const weight::ProposedVertexWeight & w){
+        new_matrix_product = new_matrix_product * w.vertex_wf_component * w.el_prop_action.diagonal().asDiagonal();
+    };
 
     Eigen::Matrix<double, 4, 3> eigensolution_wrapper;
     std::array<double, 3> eigenvalues {1., 1., 1.};
@@ -116,15 +120,10 @@ double rm_int_ph_update::attempt(){
 
             proposed_weights.push_back(current_new_weight);
         }
+        fold(proposed_weights.back());      // every branch stages exactly one segment
 
         ptr = ptr->next;
-        ++i;
     } while (ptr != ptr_two);
-
-    Eigen::Matrix3d new_matrix_product {Eigen::Matrix3d::Identity()};
-    for(int j {i-1}; j > -1; --j){
-        new_matrix_product = proposed_weights[j].vertex_wf_component * proposed_weights[j].el_prop_action * new_matrix_product;
-    }
 
     const double weight_proposed {
         (new_matrix_product * ptr_two->next->vertex_wf_component * ptr_two->next->right_component * ptr_prev->left_component * ptr_prev->vertex_wf_component).trace()

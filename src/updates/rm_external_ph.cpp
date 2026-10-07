@@ -18,6 +18,15 @@ double rm_ext_ph_update::attempt(){
     proposed_weights_end.clear();
     proposed_weights_middle.clear();
 
+    // products of the three regions, each accumulated left to right (time order) as its segments are
+    // staged; the regions themselves are not always staged in time order, hence three accumulators
+    Eigen::Matrix3d beginning_product {Eigen::Matrix3d::Identity()};
+    Eigen::Matrix3d middle_product {Eigen::Matrix3d::Identity()};
+    Eigen::Matrix3d end_product {Eigen::Matrix3d::Identity()};
+    auto fold = [](Eigen::Matrix3d & product, const weight::ProposedVertexWeight & w){
+        product = product * w.vertex_wf_component * w.el_prop_action.diagonal().asDiagonal();
+    };
+
     assert(cfg->external_ph_manager->current_length % 2 == 0);
     if(cfg->external_ph_manager->current_length < 2){
         return -1; 
@@ -80,6 +89,7 @@ double rm_ext_ph_update::attempt(){
             current_new_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[2])*(ptr->tau_next - ptr->tau));
 
             proposed_weights_beginning.push_back(current_new_weight);
+            fold(beginning_product, proposed_weights_beginning.back());
             ptr = ptr->next;
         }
 
@@ -110,6 +120,7 @@ double rm_ext_ph_update::attempt(){
             prev_weight.el_prop_action(2,2) = std::exp(-k_sq/(2*prev_weight.eff_masses[2])*(duration_end - prev->tau));
 
             proposed_weights_beginning.push_back(prev_weight);
+            fold(beginning_product, proposed_weights_beginning.back());
         }
 
         // middle: untouched - folded explicitly from each vertex's cached vertex_wf_component/
@@ -119,9 +130,8 @@ double rm_ext_ph_update::attempt(){
         // pushed below instead, so including it here too would double-count it (once with its stale
         // short duration here, once with its correct extended duration there). With exactly one
         // interior vertex (ptr_two->prev == ptr_one->next) the walk is empty and gives Identity.
-        Eigen::Matrix3d middle_product {Eigen::Matrix3d::Identity()};
         for (Vertex * ptr_mid {ptr_one->next}; !adjacent && ptr_mid != ptr_two->prev; ptr_mid = ptr_mid->next) {
-            middle_product = middle_product * ptr_mid->vertex_wf_component * ptr_mid->el_prop_action;
+            middle_product = middle_product * ptr_mid->vertex_wf_component * ptr_mid->el_prop_action.diagonal().asDiagonal();
         }
 
         // ptr_two->prev absorbs ptr_two - only when NOT adjacent (already folded into the
@@ -145,6 +155,7 @@ double rm_ext_ph_update::attempt(){
             prev_two_weight.el_prop_action(2,2) = std::exp(-k_sq/(2*prev_two_weight.eff_masses[2])*(ptr_two->tau_next - prev_two->tau));
 
             proposed_weights_end.push_back(prev_two_weight);
+            fold(end_product, proposed_weights_end.back());
         }
 
         // pure revert: ptr_two->next -> diagram_tail->prev. The first entry here chains off
@@ -171,6 +182,7 @@ double rm_ext_ph_update::attempt(){
             current_new_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[2])*(ptr->tau_next - ptr->tau));
 
             proposed_weights_end.push_back(current_new_weight);
+            fold(end_product, proposed_weights_end.back());
             ptr = ptr->next;
         }
 
@@ -178,15 +190,7 @@ double rm_ext_ph_update::attempt(){
         // is the diagram WITHOUT this line (no phonon coupling/decay factors, since there's no
         // phonon); weight_current is the diagram WITH it (right_component.trace() plus the line's
         // own coupling/decay factors, which aren't part of the electron trace at all).
-        Eigen::Matrix3d beginning_product {Eigen::Matrix3d::Identity()};
-        for (const auto & entry : proposed_weights_beginning) {
-            beginning_product = beginning_product * entry.vertex_wf_component * entry.el_prop_action;
-        }
 
-        Eigen::Matrix3d end_product {Eigen::Matrix3d::Identity()};
-        for (const auto & entry : proposed_weights_end) {
-            end_product = end_product * entry.vertex_wf_component * entry.el_prop_action;
-        }
 
         const double weight_proposed {
             (beginning_product * middle_product * end_product).trace()
@@ -260,6 +264,7 @@ double rm_ext_ph_update::attempt(){
             current_new_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[2])*(ptr->tau_next - ptr->tau));
 
             proposed_weights_beginning.push_back(current_new_weight);
+            fold(beginning_product, proposed_weights_beginning.back());
             ptr = ptr->next;
         }
 
@@ -291,6 +296,7 @@ double rm_ext_ph_update::attempt(){
             prev_two_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*prev_two_weight.eff_masses[2])*(duration_end - prev_two->tau));
 
             proposed_weights_beginning.push_back(prev_two_weight);
+            fold(beginning_product, proposed_weights_beginning.back());
         }
 
         // middle: ptr_two->next -> ptr_one->prev->prev, pure revert (double shift) - only when
@@ -317,6 +323,7 @@ double rm_ext_ph_update::attempt(){
                 current_new_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[2])*(ptr->tau_next - ptr->tau));
 
                 proposed_weights_middle.push_back(current_new_weight);
+                fold(middle_product, proposed_weights_middle.back());
                 ptr = ptr->next;
             }
 
@@ -341,6 +348,7 @@ double rm_ext_ph_update::attempt(){
             prev_one_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*prev_one_weight.eff_masses[2])*(ptr_one->tau_next - prev_one->tau));
 
             proposed_weights_middle.push_back(prev_one_weight);
+            fold(middle_product, proposed_weights_middle.back());
         }
 
         // end walk: ptr_one->next -> diagram_tail->prev, pure revert (single shift). The first
@@ -370,25 +378,14 @@ double rm_ext_ph_update::attempt(){
             current_new_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[2])*(ptr->tau_next - ptr->tau));
 
             proposed_weights_end.push_back(current_new_weight);
+            fold(end_product, proposed_weights_end.back());
             ptr = ptr->next;
         }
 
         // trace assembly: same shape as case 1, but no untouched region - all three folds are
         // freshly computed straight from proposed_weights_*, no cached-quantity shortcut needed.
-        Eigen::Matrix3d beginning_product {Eigen::Matrix3d::Identity()};
-        for (const auto & entry : proposed_weights_beginning) {
-            beginning_product = beginning_product * entry.vertex_wf_component * entry.el_prop_action;
-        }
 
-        Eigen::Matrix3d middle_product {Eigen::Matrix3d::Identity()};
-        for (const auto & entry : proposed_weights_middle) {
-            middle_product = middle_product * entry.vertex_wf_component * entry.el_prop_action;
-        }
 
-        Eigen::Matrix3d end_product {Eigen::Matrix3d::Identity()};
-        for (const auto & entry : proposed_weights_end) {
-            end_product = end_product * entry.vertex_wf_component * entry.el_prop_action;
-        }
 
         const double weight_proposed {
             (beginning_product * middle_product * end_product).trace()
