@@ -10,20 +10,14 @@ double chg_tau_update::attempt(){
     
     const std::array<double, 3> energies {this->vertex->electronEnergy()};
     const double lowest_energy {*std::min_element(energies.begin(), energies.end())};
-    double ext_ph_energies {0.};
-    
-    {
-        int counter {0};
 
-        for(int i {0}; i < this->cfg->external_ph_manager->current_length; ++i){
-            if(this->cfg->external_ph_manager->ptr_vertex_pool[i].linked_vertex->type == -2){
-                ext_ph_energies += this->cfg->external_ph_manager->ptr_vertex_pool[i].linked_vertex->ph_energy;
-                ++counter;
-            }
-            if(counter == this->cfg->external_ph_manager->current_length/2){
-                break;
-            }
-        }
+    // one vertex per external line: by the slot layout rule (vertex_manager.hpp) the odd slot of each
+    // pair is the line's annihilation vertex (both ends carry the same ph_energy)
+    double ext_ph_energies {0.};
+    for(int i {1}; i < this->cfg->external_ph_manager->current_length; i += 2){
+        const Vertex * v {this->cfg->external_ph_manager->ptr_vertex_pool[i].linked_vertex};
+        assert(v->type == -2);
+        ext_ph_energies += v->ph_energy;
     }
 
     const double total_lowest_energy {lowest_energy - this->cfg->chem_pot + ext_ph_energies};
@@ -89,18 +83,12 @@ void chg_tau_update::accept(){
     // is O(1): it sets tail->left_component = L(vertex) * wf(vertex) * A(vertex).
     weight::LKMatrix::computeLeftSide(cfg->diagram_tail, this->vertex);
 
-    {
-        int counter {0};
-
-        for(int i {0}; i < this->cfg->external_ph_manager->current_length; ++i){
-            if(this->cfg->external_ph_manager->ptr_vertex_pool[i].linked_vertex->type == -2){
-                this->cfg->external_ph_manager->ptr_vertex_pool[i].linked_vertex->computeExternalPhPropAction(tau_proposed);
-                ++counter;
-            }
-            if(counter == this->cfg->external_ph_manager->current_length/2){
-                break;
-            }
-        }
+    // each external line's propagator depends on the length (computeExternalPhPropAction sets both
+    // ends); the odd slot of each pair is the line's annihilation vertex
+    for(int i {1}; i < this->cfg->external_ph_manager->current_length; i += 2){
+        Vertex * v {this->cfg->external_ph_manager->ptr_vertex_pool[i].linked_vertex};
+        assert(v->type == -2);
+        v->computeExternalPhPropAction(tau_proposed);
     }
 
     sign.accepted(cfg);
