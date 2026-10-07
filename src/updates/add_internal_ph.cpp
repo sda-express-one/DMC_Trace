@@ -1,3 +1,8 @@
+// [N_MODES NORMALIZATION - TO BE VERIFIED]
+// The new line's phonon mode is drawn uniformly (drawPhononMode, probability 1/N_modes) and the diagrams
+// sum over the mode of every line, so the forward proposal's 1/N_modes is divided out: the ratio carries
+// a factor N_modes (rm_*_ph, which removes a line without choosing a mode, carries 1/N_modes).
+
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -183,11 +188,17 @@ double add_int_ph_update::attempt(){
     // add context factors. The momentum enters per dr dOmega: the coupling as |g|^2|w|^2 (above) and
     // the proposal as its sphericalDensity, both finite at w = 0 - per d^3w they would be
     // |g|^2 = C/|w|^2 and q = sphericalDensity/|w|^2, the same ratio.
+
+    // [N_MODES NORMALIZATION - TO BE VERIFIED]
+    // the mode was drawn uniformly: divide out its 1/N_modes (rm_*_ph carries 1/N_modes)
+    const double n_modes {static_cast<double>(cfg->phonon_mode_manager->num_phonon_modes)};
+
     const double numerator {
         p_B *
         weights_proposed * 
         (tau_end_v1 - tau_init_v1) * 
-        Coupling::Parameters::V_unit_cell
+        Coupling::Parameters::V_unit_cell *
+        n_modes   // [N_MODES NORMALIZATION - TO BE VERIFIED]
     };
     const double denominator {
         p_A *

@@ -1,3 +1,8 @@
+// [N_MODES NORMALIZATION - TO BE VERIFIED]
+// The new line's phonon mode is drawn uniformly (drawPhononMode, probability 1/N_modes) and the diagrams
+// sum over the mode of every line, so the forward proposal's 1/N_modes is divided out: the ratio carries
+// a factor N_modes (rm_*_ph, which removes a line without choosing a mode, carries 1/N_modes).
+
 #include "updates/add_external_ph.hpp"
 #include <array>
 #include <cassert>
@@ -238,10 +243,15 @@ double add_ext_ph_update::attempt(){
         const double p_B {1.};
         const double p_A {1.*(static_cast<double>(cfg->external_ph_manager->current_length)/2.) + 1.};
 
+        // [N_MODES NORMALIZATION - TO BE VERIFIED]
+        // the mode was drawn uniformly: divide out its 1/N_modes (rm_*_ph carries 1/N_modes)
+        const double n_modes {static_cast<double>(cfg->phonon_mode_manager->num_phonon_modes)};
+
         const double numerator {
             p_B *
             weight_proposed *
-            Coupling::Parameters::V_unit_cell
+            Coupling::Parameters::V_unit_cell *
+            n_modes   // [N_MODES NORMALIZATION - TO BE VERIFIED]
         };
 
         const double denominator {
@@ -465,10 +475,15 @@ double add_ext_ph_update::attempt(){
         const double p_B {1.};
         const double p_A {1.*(static_cast<double>(cfg->external_ph_manager->current_length)/2.) + 1.};
 
+        // [N_MODES NORMALIZATION - TO BE VERIFIED]
+        // the mode was drawn uniformly: divide out its 1/N_modes (rm_*_ph carries 1/N_modes)
+        const double n_modes {static_cast<double>(cfg->phonon_mode_manager->num_phonon_modes)};
+
         const double numerator {
             p_B *
             weight_proposed *
-            Coupling::Parameters::V_unit_cell
+            Coupling::Parameters::V_unit_cell *
+            n_modes   // [N_MODES NORMALIZATION - TO BE VERIFIED]
         };
 
         const double denominator {

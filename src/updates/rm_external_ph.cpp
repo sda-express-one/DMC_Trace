@@ -1,3 +1,8 @@
+// [N_MODES NORMALIZATION - TO BE VERIFIED]
+// Inverse of add_*_ph, whose proposal draws the new line's phonon mode uniformly (probability
+// 1/N_modes): the ratio carries a factor 1/N_modes (and add_*_ph's N_modes), so that the add x rm
+// product stays 1 and the diagrams sum over the mode of every line.
+
 #include "updates/rm_external_ph.hpp"
 #include <array>
 #include <cassert>
@@ -195,6 +200,10 @@ double rm_ext_ph_update::attempt(){
         const double p_A {1.*(static_cast<double>(cfg->external_ph_manager->current_length)/2.)};
         const double p_B {1.};
 
+        // [N_MODES NORMALIZATION - TO BE VERIFIED]
+        // uniform mode draw in add_*_ph: N_modes in its ratio, 1/N_modes here in rm
+        const double n_modes {static_cast<double>(cfg->phonon_mode_manager->num_phonon_modes)};
+
         const double numerator {
             p_A *
             std::pow(2.*std::numbers::pi, 3) *
@@ -206,7 +215,8 @@ double rm_ext_ph_update::attempt(){
         const double denominator {
             p_B *
             weight_current *
-            Coupling::Parameters::V_unit_cell
+            Coupling::Parameters::V_unit_cell *
+            n_modes   // [N_MODES NORMALIZATION - TO BE VERIFIED]
         };
 
         return sign.take(numerator/denominator);
@@ -392,6 +402,10 @@ double rm_ext_ph_update::attempt(){
         const double p_A {1.*(static_cast<double>(cfg->external_ph_manager->current_length)/2.)};
         const double p_B {1.};
 
+        // [N_MODES NORMALIZATION - TO BE VERIFIED]
+        // uniform mode draw in add_*_ph: N_modes in its ratio, 1/N_modes here in rm
+        const double n_modes {static_cast<double>(cfg->phonon_mode_manager->num_phonon_modes)};
+
         const double numerator {
             p_A *
             std::pow(2.*std::numbers::pi, 3) *
@@ -403,7 +417,8 @@ double rm_ext_ph_update::attempt(){
         const double denominator {
             p_B *
             weight_current *
-            Coupling::Parameters::V_unit_cell
+            Coupling::Parameters::V_unit_cell *
+            n_modes   // [N_MODES NORMALIZATION - TO BE VERIFIED]
         };
 
         return sign.take(numerator/denominator);

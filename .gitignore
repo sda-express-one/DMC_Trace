@@ -36,3 +36,6 @@ literature
 
 # ignore claude folders
 .claude
+
+# ignore debug and reminder files
+TO_VERIFY
