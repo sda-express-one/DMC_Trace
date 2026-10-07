@@ -141,28 +141,13 @@ namespace weight {
             if(eigenvectors(1,1) < 0){eigenvectors.col(1)*=-1;}
             if(eigenvectors(2,2) < 0){eigenvectors.col(2)*=-1;}
 
-            // transformation matrix from IBZ to generic sector
-            Eigen::Matrix3d transformation_matrix;
-            transformation_matrix << 0, 0, 0,
-                                     0, 0, 0,
-                                     0, 0, 0;
-    
-            // compute transformation matrix
-            transformation_matrix(eigenv_gauge.position[0],0) = eigenv_gauge.sign[0];
-            transformation_matrix(eigenv_gauge.position[1],1) = eigenv_gauge.sign[1];
-            transformation_matrix(eigenv_gauge.position[2],2) = eigenv_gauge.sign[2];
-
+            // back from the IBZ to the original sector: the transformation is a signed permutation T with
+            // T(position[i], i) = sign[i] and zeros elsewhere, so T * eigenvectors just moves row i to row
+            // position[i] with that sign - applied directly instead of as a matrix product
             Eigen::Matrix3d new_eigenvectors;
-
-            // new eigenvectord
-            Eigen::Vector3d col_zero {transformation_matrix*eigenvectors.col(0)};
-            Eigen::Vector3d col_one {transformation_matrix*eigenvectors.col(1)};
-            Eigen::Vector3d col_two {transformation_matrix*eigenvectors.col(2)};
-
-            // new eigenvector matrix
-            new_eigenvectors.col(0) = col_zero;
-            new_eigenvectors.col(1) = col_one;
-            new_eigenvectors.col(2) = col_two;
+            for (int i {0}; i < 3; ++i) {
+                new_eigenvectors.row(eigenv_gauge.position[i]) = static_cast<double>(eigenv_gauge.sign[i]) * eigenvectors.row(i);
+            }
 
             eigenvectors = new_eigenvectors;
 
