@@ -11,6 +11,9 @@
 //   chg_tau, tail free, last vertex V fixed: W(d) = tr( wf(V) A_last(d) L(V) ) e^{(mu - omega_ext) d},
 //     d = tau_D - tau_V, on a bare propagator and on a diagram whose last segment is energetic and long
 //     after the start (E_min tau_D ~ 1000: the regime where the old ratio underflowed to 0/0).
+//   str_diagram, one line, all times free (head, line and last segment durations, so tau_D too): the
+//     target W = T(durations) e^{mu tau_D} e^{-omega l} over tau_D <= tau_max, by 3D quadrature, for each
+//     line kind - checks the re-timing proposal's cancellation of mu and of the phonon propagators.
 //   chg_ph_energy, one line at fixed times and two phonon modes A, B, for each line kind: a two-state
 //     target, the fraction of steps in mode A must be W_A / (W_A + W_B), W = C(omega, eps) e^{-omega l}.
 //   chg_ph_momentum, one line at fixed times, for each of the three line kinds: pi(w) ~ T(w) |g(w)|^2,
@@ -31,6 +34,7 @@
 #include "updates/chg_tau.hpp"
 #include "updates/chg_ph_momentum.hpp"
 #include "updates/chg_ph_energy.hpp"
+#include "updates/str_diagram.hpp"
 #include "updates/add_internal_ph.hpp"
 #include "updates/rm_internal_ph.hpp"
 #include "updates/add_external_ph.hpp"
@@ -229,6 +233,75 @@ static double line_trace(Line kind, std::array<double, 3> p, std::array<double, 
         U_prev = U;
     }
     return prod.trace();
+}
+
+// str_diagram alone on one line: everything is fixed but the three durations, so the target over
+// (t1, t2, tau_D), 0 < t1 < t2 < tau_D <= tau_max, is T(t1, t2 - t1, tau_D - t2) e^{mu tau_D} e^{-omega l}
+// (couplings constant), l = t2 - t1 internal or the wrapped length external.
+static void str_case(test::Checks & check, const char * label, Line kind){
+    const std::array<double, 3> p {0.11, -0.07, 0.05}, w {0.6, -0.4, 0.5};
+    const int CHAINS {12};
+    const long BURN {20000}, STEPS {400000};
+
+    double tau_max {0.}, mu {0.}, omega {0.};
+    {
+        test::Diagram d {1ULL, p, 4, 4};
+        tau_max = d.cfg.tau_max; mu = d.cfg.chem_pot; omega = d.modes.phonon_mode_pool[0].phonon_energy;
+    }
+    auto length = [&](double t1, double t2, double L){
+        return kind == Line::internal ? t2 - t1 : kind == Line::ext_ann_first ? L - t2 + t1 : L - t1 + t2;
+    };
+
+    // exact averages: nested Gauss-Legendre in tau_D, t1 in [0, tau_D], t2 in [t1, tau_D]
+    double Z {0.}, ex_L {0.}, ex_t1 {0.}, ex_s {0.};
+    {
+        const int N {48};
+        std::vector<double> xL, wL;
+        gauss_legendre(N, 0., tau_max, xL, wL);
+        for (int a {0}; a < N; ++a) {
+            const double L {xL[a]};
+            std::vector<double> x1, w1;
+            gauss_legendre(N, 0., L, x1, w1);
+            for (int b {0}; b < N; ++b) {
+                const double t1 {x1[b]};
+                std::vector<double> x2, w2;
+                gauss_legendre(N, t1, L, x2, w2);
+                for (int c {0}; c < N; ++c) {
+                    const double t2 {x2[c]};
+                    const double W {line_trace(kind, p, w, {t1, t2 - t1, L - t2}) * std::exp(mu*L) * std::exp(-omega*length(t1, t2, L))};
+                    const double jac {wL[a]*w1[b]*w2[c]};
+                    Z += W*jac; ex_L += L*W*jac; ex_t1 += t1*W*jac; ex_s += (t2 - t1)*W*jac;
+                }
+            }
+        }
+        ex_L /= Z; ex_t1 /= Z; ex_s /= Z;
+    }
+
+    std::vector<double> Ls, t1s, ss;
+    long accepted {0};
+    bool clean {true};
+    for (int c {0}; c < CHAINS; ++c) {
+        test::Diagram d {1500ULL + static_cast<unsigned long long>(c), p, 4, 4};
+        build_line(d, kind, p, w, 0.6, 1.4, 2.0);
+        str_diagram_update str {&d.cfg, &d.rng};
+        std::uniform_real_distribution<double> u {0., 1.};
+        const Vertex * a {d.cfg.diagram_head->next};
+        const Vertex * b {a->next};
+        double sL {0.}, s1 {0.}, sS {0.};
+        for (long s {-BURN}; s < STEPS; ++s) {
+            const double r {str.attempt()};
+            if (r > 0. && u(d.rng) < r) { str.accept(); if (s >= 0) { ++accepted; } }
+            else { str.reject(); }
+            if (s >= 0) { sL += d.cfg.current_tau_length; s1 += a->tau; sS += b->tau - a->tau; }
+        }
+        clean = clean && numerical::sanitizeDiagram(&d.cfg).clean();
+        Ls.push_back(sL / STEPS); t1s.push_back(s1 / STEPS); ss.push_back(sS / STEPS);
+    }
+    const MeanErr mL {spread(Ls)}, m1 {spread(t1s)}, mS {spread(ss)};
+    const double pL {(mL.mean - ex_L)/mL.err}, p1 {(m1.mean - ex_t1)/m1.err}, pS {(mS.mean - ex_s)/mS.err};
+    check(std::abs(pL) < 4.5 && std::abs(p1) < 4.5 && std::abs(pS) < 4.5 && clean && accepted > 1000,
+          "str_diagram, %s: <tau_D> %.5f vs %.5f (%+.1f sig)  <t1> %.5f vs %.5f (%+.1f sig)  <t2-t1> %.5f vs %.5f (%+.1f sig), acceptance %.2f",
+          label, mL.mean, ex_L, pL, m1.mean, ex_t1, p1, mS.mean, ex_s, pS, static_cast<double>(accepted) / (CHAINS * STEPS));
 }
 
 // chg_ph_energy alone on one line at fixed times, two modes: the line's mode is a two-state chain whose
@@ -431,13 +504,16 @@ static void chg_w_ratio_case(test::Checks & check){
 }
 
 int main(){
-    test::Checks check {"detailed balance of mv_tau, chg_tau, chg_ph_momentum and chg_ph_energy"};
+    test::Checks check {"detailed balance of mv_tau, chg_tau, str_diagram, chg_ph_momentum and chg_ph_energy"};
     test::setLK(test::AlAs);
     mv_case(check, "internal line, moderate w", false, {0.6, -0.4, 0.5});
     mv_case(check, "internal line, large w   ", false, {6.0, -4.0, 5.0});
     mv_case(check, "external line            ", true,  {0.6, -0.4, 0.5});
     chg_case(check, "bare propagator (mu cancellation)", false);
     chg_case(check, "external line, E_min tau_D ~ 1000", true);
+    str_case(check, "internal line      ", Line::internal);
+    str_case(check, "external, ann first", Line::ext_ann_first);
+    str_case(check, "external, cre first", Line::ext_cre_first);
     chg_e_case(check, "internal line      ", Line::internal);
     chg_e_case(check, "external, ann first", Line::ext_ann_first);
     chg_e_case(check, "external, cre first", Line::ext_cre_first);
