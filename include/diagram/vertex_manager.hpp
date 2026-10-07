@@ -100,7 +100,7 @@ struct VertexPointerManager {
         assert((vertex_b->type > 0) == (vertex_b->index % 2 == 0));
     }
 
-    void removeVertexPointers(VertexPointer& pointer_one, VertexPointer& pointer_two){
+    void removeVertexPointers(VertexPointer& pointer_one, [[maybe_unused]] VertexPointer& pointer_two){
         assert(current_length % 2 == 0);
         assert(current_length > -1);
 
