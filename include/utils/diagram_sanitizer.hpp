@@ -51,6 +51,7 @@ namespace numerical {
         double max_basis_dev {0.};      // |baseWF - U(k)|
         double max_mass_dev {0.};       // relative
         double max_action_dev {0.};     // relative, diagonal of el_prop_action
+        double max_ph_action_dev {0.};  // relative, ph_action of both ends of every line vs e^{-omega l}
         double max_overlap_dev {0.};    // |vertex_wf_component - U_prev^T U_v|  (head: vs Identity)
         int overlap_flips {0};          // overlaps off by more than tolerances.flip
         double closing_basis_dev {0.};  // |U(last segment) - U(head)|: the trace closes with no
@@ -74,6 +75,7 @@ namespace numerical {
             return broken_links == 0 && bad_lines == 0 && overlap_flips == 0
                 && max_momentum_residual <= tol.momentum
                 && max_basis_dev <= tol.exact && max_mass_dev <= tol.exact && max_action_dev <= tol.exact
+                && max_ph_action_dev <= tol.exact
                 && closing_basis_dev <= tol.flip
                 && !sign_mismatch
                 && relativeTraceChange() <= tol.flip;
@@ -189,12 +191,37 @@ namespace numerical {
             rep.closing_basis_dev = (tail->prev->baseWF - head->baseWF).cwiseAbs().maxCoeff();
         }
 
+        // phonon propagators, cached on both ends of each line (chg_ph_energy reads them): the even
+        // slot of each pair is the line's creation vertex, the length wraps for an external line
+        for (const bool internal : {true, false}) {
+            const VertexPointerManager * m {internal ? cfg->internal_ph_manager : cfg->external_ph_manager};
+            for (int i {0}; i < m->current_length; i += 2) {
+                const Vertex * v {m->ptr_vertex_pool[i].linked_vertex};
+                const Vertex * cj {v->conj_vertex};
+                if (cj == nullptr) { continue; }   // already counted as a bad line
+                const double l {internal ? cj->tau - v->tau : cfg->current_tau_length - v->tau + cj->tau};
+                const double expected {std::exp(-v->ph_energy * l)};
+                const double denom {std::max(expected, std::numeric_limits<double>::min())};
+                rep.max_ph_action_dev = std::max({rep.max_ph_action_dev, std::abs(v->ph_action - expected) / denom,
+                                                  std::abs(cj->ph_action - expected) / denom});
+            }
+        }
+
         // ---- 4. rebuild every cached quantity from k and tau, then refresh the products -----
         for (Vertex * v {head}; v != tail; v = v->next) {
             rebuildSegment(v, head);
         }
         weight::LKMatrix::computeRightSide(head, tail);
         weight::LKMatrix::computeLeftSide(tail, head);
+        // the propagators too, unless a line is inconsistent (the compute functions assert on it)
+        if (rep.bad_lines == 0) {
+            for (int i {0}; i < cfg->internal_ph_manager->current_length; i += 2) {
+                cfg->internal_ph_manager->ptr_vertex_pool[i].linked_vertex->computeInternalPhPropAction();
+            }
+            for (int i {0}; i < cfg->external_ph_manager->current_length; i += 2) {
+                cfg->external_ph_manager->ptr_vertex_pool[i].linked_vertex->computeExternalPhPropAction(cfg->current_tau_length);
+            }
+        }
         rep.rebuilt = true;
         rep.trace_after = head->right_component.trace();
 
