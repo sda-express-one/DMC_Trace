@@ -11,6 +11,8 @@
 //   chg_tau, tail free, last vertex V fixed: W(d) = tr( wf(V) A_last(d) L(V) ) e^{(mu - omega_ext) d},
 //     d = tau_D - tau_V, on a bare propagator and on a diagram whose last segment is energetic and long
 //     after the start (E_min tau_D ~ 1000: the regime where the old ratio underflowed to 0/0).
+//   chg_ph_energy, one line at fixed times and two phonon modes A, B, for each line kind: a two-state
+//     target, the fraction of steps in mode A must be W_A / (W_A + W_B), W = C(omega, eps) e^{-omega l}.
 //   chg_ph_momentum, one line at fixed times, for each of the three line kinds: pi(w) ~ T(w) |g(w)|^2,
 //     averages of |w|^2, |w| and w.p^ against 3D quadrature. Plus the returned ratio itself on general
 //     multi-line diagrams from a chain with all updates, against the diagram rebuilt from scratch.
@@ -28,6 +30,7 @@
 #include "updates/mv_vertex.hpp"
 #include "updates/chg_tau.hpp"
 #include "updates/chg_ph_momentum.hpp"
+#include "updates/chg_ph_energy.hpp"
 #include "updates/add_internal_ph.hpp"
 #include "updates/rm_internal_ph.hpp"
 #include "updates/add_external_ph.hpp"
@@ -228,6 +231,48 @@ static double line_trace(Line kind, std::array<double, 3> p, std::array<double, 
     return prod.trace();
 }
 
+// chg_ph_energy alone on one line at fixed times, two modes: the line's mode is a two-state chain whose
+// target is W_A / W_B = C(omega_A, eps_A) e^{-omega_A l} / ( C(omega_B, eps_B) e^{-omega_B l} ), C the
+// coupling |g|^2|q|^2 (the momentum and the electronic trace do not depend on the mode).
+static void chg_e_case(test::Checks & check, const char * label, Line kind){
+    const std::array<double, 3> p {0.11, -0.07, 0.05}, w {0.6, -0.4, 0.5};
+    const double L {2.0}, t1 {0.6}, t2 {1.4};
+    const PhononMode A {0.5, 2.0}, B {0.9, 3.5};
+    const int CHAINS {12};
+    const long BURN {10000}, STEPS {200000};
+
+    // line length: the creation vertex is first for internal and cre-first lines, second for ann-first
+    const double l {kind == Line::internal ? t2 - t1 : kind == Line::ext_ann_first ? L - t2 + t1 : L - t1 + t2};
+    const double wa {Coupling::Strength::squaredTimesMomentumSquared(A.phonon_energy, A.diel_response) * std::exp(-A.phonon_energy * l)};
+    const double wb {Coupling::Strength::squaredTimesMomentumSquared(B.phonon_energy, B.diel_response) * std::exp(-B.phonon_energy * l)};
+    const double exact {wa / (wa + wb)};
+
+    std::vector<double> fractions;
+    long accepted {0};
+    bool clean {true};
+    for (int c {0}; c < CHAINS; ++c) {
+        test::Diagram d {1300ULL + static_cast<unsigned long long>(c), p, 4, 4, {A, B}};
+        build_line(d, kind, p, w, t1, t2, L);      // starts in mode A (the pool's first entry)
+        chg_ph_energy che {&d.cfg, &d.rng};
+        std::uniform_real_distribution<double> u {0., 1.};
+        const Vertex * a {d.cfg.diagram_head->next};
+        double in_a {0.};
+        for (long s {-BURN}; s < STEPS; ++s) {
+            const double r {che.attempt()};
+            if (r > 0. && u(d.rng) < r) { che.accept(); if (s >= 0) { ++accepted; } }
+            else { che.reject(); }
+            if (s >= 0 && a->ph_energy == A.phonon_energy) { in_a += 1.; }
+        }
+        clean = clean && numerical::sanitizeDiagram(&d.cfg).clean();
+        fractions.push_back(in_a / STEPS);
+    }
+    const MeanErr m {spread(fractions)};
+    const double pull {(m.mean - exact) / m.err};
+    check(std::abs(pull) < 4.5 && accepted > 1000 && clean,
+          "chg_ph_energy, %s: fraction in mode A %.5f +- %.5f vs exact %.5f (%+.1f sig), %ld accepted, final state clean",
+          label, m.mean, m.err, exact, pull, accepted);
+}
+
 // chg_ph_momentum on a single line with fixed times. The phonon propagator does not depend on w, so
 // the target is pi(w) d^3w ~ T(w) |g(w)|^2 d^3w ~ T(w) dr dOmega: the 1/|w|^2 of the coupling cancels
 // the r^2 of the measure, and the exact averages are smooth integrals in spherical coordinates
@@ -386,13 +431,16 @@ static void chg_w_ratio_case(test::Checks & check){
 }
 
 int main(){
-    test::Checks check {"detailed balance of mv_tau, chg_tau and chg_ph_momentum"};
+    test::Checks check {"detailed balance of mv_tau, chg_tau, chg_ph_momentum and chg_ph_energy"};
     test::setLK(test::AlAs);
     mv_case(check, "internal line, moderate w", false, {0.6, -0.4, 0.5});
     mv_case(check, "internal line, large w   ", false, {6.0, -4.0, 5.0});
     mv_case(check, "external line            ", true,  {0.6, -0.4, 0.5});
     chg_case(check, "bare propagator (mu cancellation)", false);
     chg_case(check, "external line, E_min tau_D ~ 1000", true);
+    chg_e_case(check, "internal line      ", Line::internal);
+    chg_e_case(check, "external, ann first", Line::ext_ann_first);
+    chg_e_case(check, "external, cre first", Line::ext_cre_first);
     chg_w_case(check, "internal line      ", Line::internal);
     chg_w_case(check, "external, ann first", Line::ext_ann_first);
     chg_w_case(check, "external, cre first", Line::ext_cre_first);

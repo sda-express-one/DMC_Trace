@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdarg>
 #include <cstdio>
+#include <utility>
 #include <vector>
 #include <simplemc/random/xoshiro256.hpp>
 #include "diagram/diagram_config.hpp"
@@ -69,6 +70,20 @@ struct Diagram {
           cfg(p, tau_max, chem_pot, &internal, &external, &modes)
     {
         // the diagram_cfg constructor leaves these unset; the sanitizer then builds every cached quantity
+        cfg.diagram_tail->tau = cfg.current_tau_length;
+        cfg.diagram_head->tau_next = cfg.current_tau_length;
+        numerical::sanitizeDiagram(&cfg);
+    }
+
+    // the same, with several phonon modes (for the updates that draw or change a line's mode)
+    Diagram(unsigned long long seed, std::array<double, 3> p, int max_internal_vertices, int max_external_vertices,
+            std::vector<PhononMode> phonon_modes, double tau_max = 10.0, double chem_pot = -1.0)
+        : rng(seed),
+          internal(max_internal_vertices, &rng),
+          external(max_external_vertices, &rng),
+          modes(static_cast<int>(phonon_modes.size()), phonon_modes, &rng),
+          cfg(p, tau_max, chem_pot, &internal, &external, &modes)
+    {
         cfg.diagram_tail->tau = cfg.current_tau_length;
         cfg.diagram_head->tau_next = cfg.current_tau_length;
         numerical::sanitizeDiagram(&cfg);
