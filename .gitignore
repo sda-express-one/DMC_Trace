@@ -37,5 +37,9 @@ literature
 # ignore claude folders
 .claude
 
+# ignore scratch folders
+.my_drafts
+
 # ignore debug and reminder files
 TO_VERIFY
+

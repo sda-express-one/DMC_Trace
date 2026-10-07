@@ -26,24 +26,23 @@ double chg_ph_momentum::attempt(){
 
     proposed_weights.clear();
         
-    std::uniform_int_distribution<int> choose_ph_vertex {0, current_order - 1};
-    int chosen_vertex {choose_ph_vertex(*rng)};
+    // choose a line uniformly (probability 1/N_lines, as when drawing either of its two vertices): by
+    // the slot layout rule (vertex_manager.hpp) slot 2m of a pair holds its creation vertex and slot
+    // 2m+1 its annihilation vertex, so both ends are read off directly
+    const int n_internal_lines {cfg->internal_ph_manager->current_length / 2};
+    std::uniform_int_distribution<int> choose_line {0, current_order/2 - 1};
+    const int line {choose_line(*rng)};
 
     double k_new_sq {0.};
     Eigen::Matrix<double, 4, 3> eigensolution_wrapper;
     std::array<double, 3> eigenvalues {1., 1., 1.};
         
-    if (chosen_vertex < cfg->internal_ph_manager->current_length) {
+    if (line < n_internal_lines) {
         branch = Branch::internal;
-        ptr_one = cfg->internal_ph_manager->selectVertex(chosen_vertex);
-            
-        if (ptr_one->type != 1) {
-            ptr_two = ptr_one;
-            ptr_one = ptr_two->conj_vertex;
-        }
-        else {
-            ptr_two = ptr_one->conj_vertex;
-        }
+        // ptr_one: creation (+1, earlier), ptr_two: annihilation
+        ptr_one = cfg->internal_ph_manager->selectVertex(2*line);
+        ptr_two = cfg->internal_ph_manager->selectVertex(2*line + 1);
+        assert(ptr_one->type == 1 && ptr_two->conj_vertex == ptr_one);
 
         const double tau_one {ptr_one->tau};
         const double tau_two {ptr_two->tau};
@@ -101,16 +100,11 @@ double chg_ph_momentum::attempt(){
                              w_current, w_proposed, tau_two - tau_one));
     }
     else {
-        chosen_vertex -= cfg->internal_ph_manager->current_length;
-        ptr_one = cfg->external_ph_manager->selectVertex(chosen_vertex);
-
-        if(ptr_one->type != -2){
-            ptr_two = ptr_one;
-            ptr_one = ptr_two->conj_vertex;
-        }
-        else {
-            ptr_two = ptr_one->conj_vertex;
-        }
+        // ptr_one: annihilation (-2), ptr_two: creation (+2)
+        const int m {line - n_internal_lines};
+        ptr_one = cfg->external_ph_manager->selectVertex(2*m + 1);
+        ptr_two = cfg->external_ph_manager->selectVertex(2*m);
+        assert(ptr_one->type == -2 && ptr_two->conj_vertex == ptr_one);
         
         const double tau_one {ptr_one->tau};
         const double tau_two {ptr_two->tau};
