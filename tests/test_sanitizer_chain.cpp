@@ -1,4 +1,4 @@
-// A Metropolis chain with all ten updates (two phonon modes, so chg_ph_energy has something to change), sanitized after EVERY accepted move.
+// A Metropolis chain with all eleven updates (two phonon modes, so chg_ph_energy has something to change), sanitized after EVERY accepted move.
 //
 // numerical::sanitizeDiagram checks the structure (links, tau ordering, tau_next == next->tau, tail at
 // current_tau_length), the lines and their manager registration, momentum conservation at every
@@ -24,14 +24,15 @@
 #include "updates/chg_ph_momentum.hpp"
 #include "updates/chg_ph_energy.hpp"
 #include "updates/str_diagram.hpp"
+#include "updates/scl_diagram.hpp"
 
 int main(){
     test::Checks check {"sanitizer after every accepted move, all updates"};
     test::setLK(test::AlAs);
 
-    const char * name[10] {"add_int", "rm_int", "add_ext", "rm_ext", "swp", "mv_tau", "chg_tau", "chg_w", "chg_ph_e", "str_diag"};
-    const long min_accepted[10] {500, 500, 300, 300, 30, 1000, 10000, 1000, 1000, 1000};
-    long accepted[10] {}, nonfinite[10] {}, dirty[10] {};
+    const char * name[11] {"add_int", "rm_int", "add_ext", "rm_ext", "swp", "mv_tau", "chg_tau", "chg_w", "chg_ph_e", "str_diag", "scl_diag"};
+    const long min_accepted[11] {500, 500, 300, 300, 30, 1000, 10000, 1000, 1000, 1000, 1000};
+    long accepted[11] {}, nonfinite[11] {}, dirty[11] {};
     long sanitized {0}, with_external {0}, max_internal {0}, max_external {0};
     double worst_overlap {0.}, worst_trace {0.};
 
@@ -42,21 +43,21 @@ int main(){
         add_ext_ph_update adde {cfg, &d.rng};  rm_ext_ph_update rme {cfg, &d.rng};
         swp_ph_update swp {cfg, &d.rng};       mv_tau_update mv {cfg, &d.rng};     chg_tau_update ch {cfg, &d.rng};
         chg_ph_momentum chw {cfg, &d.rng};     chg_ph_energy che {cfg, &d.rng};
-        str_diagram_update strd {cfg, &d.rng};
+        str_diagram_update strd {cfg, &d.rng};     scl_diagram_update scld {cfg, &d.rng};
         std::uniform_real_distribution<double> u {0., 1.};
-        std::uniform_int_distribution<int> pick {0, 9};
+        std::uniform_int_distribution<int> pick {0, 10};
 
         for (long step {0}; step < 300000; ++step) {
             const int w {pick(d.rng)};
             double r {-1.};
             switch (w) { case 0: r = addi.attempt(); break; case 1: r = rmi.attempt(); break; case 2: r = adde.attempt(); break;
                          case 3: r = rme.attempt(); break; case 4: r = swp.attempt(); break; case 5: r = mv.attempt(); break;
-                         case 6: r = ch.attempt(); break; case 7: r = chw.attempt(); break; case 8: r = che.attempt(); break; default: r = strd.attempt(); }
+                         case 6: r = ch.attempt(); break; case 7: r = chw.attempt(); break; case 8: r = che.attempt(); break; case 9: r = strd.attempt(); break; default: r = scld.attempt(); }
             if (!std::isfinite(r)) { ++nonfinite[w]; }
             if (!(r > 0. && u(d.rng) < r)) { continue; }
             switch (w) { case 0: addi.accept(); break; case 1: rmi.accept(); break; case 2: adde.accept(); break;
                          case 3: rme.accept(); break; case 4: swp.accept(); break; case 5: mv.accept(); break;
-                         case 6: ch.accept(); break; case 7: chw.accept(); break; case 8: che.accept(); break; default: strd.accept(); }
+                         case 6: ch.accept(); break; case 7: chw.accept(); break; case 8: che.accept(); break; case 9: strd.accept(); break; default: scld.accept(); }
             ++accepted[w];
 
             const numerical::SanitizeReport rep {numerical::sanitizeDiagram(cfg)};
@@ -70,7 +71,7 @@ int main(){
         }
     }
 
-    for (int i {0}; i < 10; ++i) {
+    for (int i {0}; i < 11; ++i) {
         check(dirty[i] == 0 && nonfinite[i] == 0 && accepted[i] >= min_accepted[i],
               "%-8s accepted %6ld (need >= %ld)   dirty after it %ld   non-finite ratios %ld",
               name[i], accepted[i], min_accepted[i], dirty[i], nonfinite[i]);

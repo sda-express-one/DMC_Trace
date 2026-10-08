@@ -20,6 +20,7 @@
 #include "updates/chg_ph_momentum.hpp"
 #include "updates/chg_ph_energy.hpp"
 #include "updates/str_diagram.hpp"
+#include "updates/scl_diagram.hpp"
 
 // S = sum over segments of E_min * duration, from the momenta and times alone
 static double log_scale(const diagram_cfg & cfg){
@@ -68,23 +69,24 @@ int main(){
     swp_ph_update swp {cfg, &d.rng};       mv_tau_update mv {cfg, &d.rng};
     chg_tau_update ch {cfg, &d.rng};       chg_ph_momentum chw {cfg, &d.rng};
     chg_ph_energy che {cfg, &d.rng};       str_diagram_update strd {cfg, &d.rng};
-    const char * name[10] {"add_int", "rm_int", "add_ext", "rm_ext", "swp", "mv_tau", "chg_tau", "chg_w", "chg_ph_e", "str_diag"};
+    scl_diagram_update scld {cfg, &d.rng};
+    const char * name[11] {"add_int", "rm_int", "add_ext", "rm_ext", "swp", "mv_tau", "chg_tau", "chg_w", "chg_ph_e", "str_diag", "scl_diag"};
 
     auto attempt = [&](int which){
         switch (which) { case 0: return addi.attempt(); case 1: return rmi.attempt(); case 2: return adde.attempt();
                          case 3: return rme.attempt(); case 4: return swp.attempt(); case 5: return mv.attempt();
                          case 6: return ch.attempt(); case 7: return chw.attempt(); case 8: return che.attempt();
-                         default: return strd.attempt(); }
+                         case 9: return strd.attempt(); default: return scld.attempt(); }
     };
     auto accept = [&](int which){
         switch (which) { case 0: addi.accept(); break; case 1: rmi.accept(); break; case 2: adde.accept(); break;
                          case 3: rme.accept(); break; case 4: swp.accept(); break; case 5: mv.accept(); break;
                          case 6: ch.accept(); break; case 7: chw.accept(); break; case 8: che.accept(); break;
-                         default: strd.accept(); }
+                         case 9: strd.accept(); break; default: scld.accept(); }
     };
 
     // 1. every update attempted on the long diagram itself (nothing accepted)
-    for (int which {0}; which < 10; ++which) {
+    for (int which {0}; which < 11; ++which) {
         long nonfinite {0}, genuine {0};
         for (int n {0}; n < 5000; ++n) {
             const double r {attempt(which)};
@@ -96,7 +98,7 @@ int main(){
 
     // 2. a short chain with all updates from there
     std::uniform_real_distribution<double> u {0., 1.};
-    std::uniform_int_distribution<int> pick {0, 9};
+    std::uniform_int_distribution<int> pick {0, 10};
     long nonfinite {0}, bad_trace {0}, dirty {0}, accepted {0};
     double S_max {0.};
     for (long s {0}; s < 20000; ++s) {

@@ -14,6 +14,9 @@
 //   str_diagram, one line, all times free (head, line and last segment durations, so tau_D too): the
 //     target W = T(durations) e^{mu tau_D} e^{-omega l} over tau_D <= tau_max, by 3D quadrature, for each
 //     line kind - checks the re-timing proposal's cancellation of mu and of the phonon propagators.
+//   scl_diagram, one line: alone it keeps the shape u = times / tau_D, so the target over tau_D is
+//     tau_D^n W(tau_D u) (1D quadrature: checks the Jacobian and the Gamma proposal); mixed with
+//     str_diagram it must reproduce the 3D averages of the str_diagram case.
 //   chg_ph_energy, one line at fixed times and two phonon modes A, B, for each line kind: a two-state
 //     target, the fraction of steps in mode A must be W_A / (W_A + W_B), W = C(omega, eps) e^{-omega l}.
 //   chg_ph_momentum, one line at fixed times, for each of the three line kinds: pi(w) ~ T(w) |g(w)|^2,
@@ -35,6 +38,7 @@
 #include "updates/chg_ph_momentum.hpp"
 #include "updates/chg_ph_energy.hpp"
 #include "updates/str_diagram.hpp"
+#include "updates/scl_diagram.hpp"
 #include "updates/add_internal_ph.hpp"
 #include "updates/rm_internal_ph.hpp"
 #include "updates/add_external_ph.hpp"
@@ -238,7 +242,7 @@ static double line_trace(Line kind, std::array<double, 3> p, std::array<double, 
 // str_diagram alone on one line: everything is fixed but the three durations, so the target over
 // (t1, t2, tau_D), 0 < t1 < t2 < tau_D <= tau_max, is T(t1, t2 - t1, tau_D - t2) e^{mu tau_D} e^{-omega l}
 // (couplings constant), l = t2 - t1 internal or the wrapped length external.
-static void str_case(test::Checks & check, const char * label, Line kind){
+static void str_case(test::Checks & check, const char * label, Line kind, bool mix_scl = false){
     const std::array<double, 3> p {0.11, -0.07, 0.05}, w {0.6, -0.4, 0.5};
     const int CHAINS {12};
     const long BURN {20000}, STEPS {400000};
@@ -284,14 +288,16 @@ static void str_case(test::Checks & check, const char * label, Line kind){
         test::Diagram d {1500ULL + static_cast<unsigned long long>(c), p, 4, 4};
         build_line(d, kind, p, w, 0.6, 1.4, 2.0);
         str_diagram_update str {&d.cfg, &d.rng};
+        scl_diagram_update scl {&d.cfg, &d.rng};
         std::uniform_real_distribution<double> u {0., 1.};
         const Vertex * a {d.cfg.diagram_head->next};
         const Vertex * b {a->next};
         double sL {0.}, s1 {0.}, sS {0.};
         for (long s {-BURN}; s < STEPS; ++s) {
-            const double r {str.attempt()};
-            if (r > 0. && u(d.rng) < r) { str.accept(); if (s >= 0) { ++accepted; } }
-            else { str.reject(); }
+            const bool use_scl {mix_scl && u(d.rng) < 0.5};
+            const double r {use_scl ? scl.attempt() : str.attempt()};
+            if (r > 0. && u(d.rng) < r) { use_scl ? scl.accept() : str.accept(); if (s >= 0) { ++accepted; } }
+            else { use_scl ? scl.reject() : str.reject(); }
             if (s >= 0) { sL += d.cfg.current_tau_length; s1 += a->tau; sS += b->tau - a->tau; }
         }
         clean = clean && numerical::sanitizeDiagram(&d.cfg).clean();
@@ -300,8 +306,70 @@ static void str_case(test::Checks & check, const char * label, Line kind){
     const MeanErr mL {spread(Ls)}, m1 {spread(t1s)}, mS {spread(ss)};
     const double pL {(mL.mean - ex_L)/mL.err}, p1 {(m1.mean - ex_t1)/m1.err}, pS {(mS.mean - ex_s)/mS.err};
     check(std::abs(pL) < 4.5 && std::abs(p1) < 4.5 && std::abs(pS) < 4.5 && clean && accepted > 1000,
-          "str_diagram, %s: <tau_D> %.5f vs %.5f (%+.1f sig)  <t1> %.5f vs %.5f (%+.1f sig)  <t2-t1> %.5f vs %.5f (%+.1f sig), acceptance %.2f",
+          mix_scl ? "str + scl_diagram, %s: <tau_D> %.5f vs %.5f (%+.1f sig)  <t1> %.5f vs %.5f (%+.1f sig)  <t2-t1> %.5f vs %.5f (%+.1f sig), acceptance %.2f"
+                  : "str_diagram, %s: <tau_D> %.5f vs %.5f (%+.1f sig)  <t1> %.5f vs %.5f (%+.1f sig)  <t2-t1> %.5f vs %.5f (%+.1f sig), acceptance %.2f",
           label, mL.mean, ex_L, pL, m1.mean, ex_t1, p1, mS.mean, ex_s, pS, static_cast<double>(accepted) / (CHAINS * STEPS));
+}
+
+// scl_diagram alone on one line: the shape u = (t1, t2, tau_D)/tau_D never changes, so the target is the 1D
+// density tau_D^n W(tau_D u) on (0, tau_max], n = 2 vertices, W = T(durations) e^{mu tau_D} e^{-omega l}.
+static void scl_case(test::Checks & check, const char * label, Line kind){
+    const std::array<double, 3> p {0.11, -0.07, 0.05}, w {0.6, -0.4, 0.5};
+    const double t1 {0.6}, t2 {1.4}, L {2.0};
+    const double u1 {t1 / L}, u2 {t2 / L};
+    const int CHAINS {12};
+    const long BURN {20000}, STEPS {400000};
+
+    double tau_max {0.}, mu {0.}, omega {0.};
+    {
+        test::Diagram d {1ULL, p, 4, 4};
+        tau_max = d.cfg.tau_max; mu = d.cfg.chem_pot; omega = d.modes.phonon_mode_pool[0].phonon_energy;
+    }
+    auto length = [&](double a1, double a2, double D){
+        return kind == Line::internal ? a2 - a1 : kind == Line::ext_ann_first ? D - a2 + a1 : D - a1 + a2;
+    };
+    double Z {0.}, ex1 {0.}, ex2 {0.};
+    {
+        std::vector<double> x, wt;
+        gauss_legendre(400, 0., tau_max, x, wt);
+        for (std::size_t i {0}; i < x.size(); ++i) {
+            const double D {x[i]}, a1 {u1*D}, a2 {u2*D};
+            const double W {D*D * line_trace(kind, p, w, {a1, a2 - a1, D - a2}) * std::exp(mu*D) * std::exp(-omega*length(a1, a2, D))};
+            Z += W*wt[i]; ex1 += D*W*wt[i]; ex2 += D*D*W*wt[i];
+        }
+        ex1 /= Z; ex2 /= Z;
+    }
+
+    std::vector<double> m1s, m2s;
+    long accepted {0};
+    double worst_shape {0.};
+    bool clean {true};
+    for (int c {0}; c < CHAINS; ++c) {
+        test::Diagram d {1700ULL + static_cast<unsigned long long>(c), p, 4, 4};
+        build_line(d, kind, p, w, t1, t2, L);
+        scl_diagram_update scl {&d.cfg, &d.rng};
+        std::uniform_real_distribution<double> u {0., 1.};
+        const Vertex * a {d.cfg.diagram_head->next};
+        const Vertex * b {a->next};
+        double s1 {0.}, s2 {0.};
+        for (long s {-BURN}; s < STEPS; ++s) {
+            const double r {scl.attempt()};
+            if (r > 0. && u(d.rng) < r) { scl.accept(); if (s >= 0) { ++accepted; } }
+            else { scl.reject(); }
+            if (s >= 0) {
+                const double D {d.cfg.current_tau_length};
+                s1 += D; s2 += D*D;
+                worst_shape = std::max({worst_shape, std::abs(a->tau/D - u1), std::abs(b->tau/D - u2)});
+            }
+        }
+        clean = clean && numerical::sanitizeDiagram(&d.cfg).clean();
+        m1s.push_back(s1 / STEPS); m2s.push_back(s2 / STEPS);
+    }
+    const MeanErr m1 {spread(m1s)}, m2 {spread(m2s)};
+    const double p1 {(m1.mean - ex1)/m1.err}, p2 {(m2.mean - ex2)/m2.err};
+    check(std::abs(p1) < 4.5 && std::abs(p2) < 4.5 && worst_shape < 1e-12 && clean && accepted > 1000,
+          "scl_diagram, %s: <tau_D> %.5f vs %.5f (%+.1f sig)  <tau_D^2> %.5f vs %.5f (%+.1f sig), shape kept to %.1e, acceptance %.2f",
+          label, m1.mean, ex1, p1, m2.mean, ex2, p2, worst_shape, static_cast<double>(accepted) / (CHAINS * STEPS));
 }
 
 // chg_ph_energy alone on one line at fixed times, two modes: the line's mode is a two-state chain whose
@@ -508,7 +576,7 @@ static void chg_w_ratio_case(test::Checks & check){
 }
 
 int main(){
-    test::Checks check {"detailed balance of mv_tau, chg_tau, str_diagram, chg_ph_momentum and chg_ph_energy"};
+    test::Checks check {"detailed balance of mv_tau, chg_tau, str_diagram, scl_diagram, chg_ph_momentum and chg_ph_energy"};
     test::setLK(test::AlAs);
     mv_case(check, "internal line, moderate w", false, {0.6, -0.4, 0.5});
     mv_case(check, "internal line, large w   ", false, {6.0, -4.0, 5.0});
@@ -518,6 +586,11 @@ int main(){
     str_case(check, "internal line      ", Line::internal);
     str_case(check, "external, ann first", Line::ext_ann_first);
     str_case(check, "external, cre first", Line::ext_cre_first);
+    scl_case(check, "internal line      ", Line::internal);
+    scl_case(check, "external, ann first", Line::ext_ann_first);
+    scl_case(check, "external, cre first", Line::ext_cre_first);
+    str_case(check, "internal line      ", Line::internal, true);
+    str_case(check, "external, cre first", Line::ext_cre_first, true);
     chg_e_case(check, "internal line      ", Line::internal);
     chg_e_case(check, "external, ann first", Line::ext_ann_first);
     chg_e_case(check, "external, cre first", Line::ext_cre_first);

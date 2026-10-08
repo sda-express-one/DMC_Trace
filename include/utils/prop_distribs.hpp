@@ -38,6 +38,21 @@ namespace proposal {
             return std::sqrt(2. * shape * l / std::numbers::pi) * std::exp(-shape * l * r2 / 2.) / (4. * std::numbers::pi);
         }
     };
+
+    // Gamma distribution with shape k > 0 and rate a > 0,
+    //     p(x) = a^k x^{k-1} e^{-a x} / Gamma(k),   x > 0,
+    // mean k/a, relative width 1/sqrt(k). Free functions: the distribution object is cheap to build and its
+    // parameters change from call to call (scl_diagram draws tau_D' with k = n + 1, a from the diagram).
+    template <class RNG>
+    double drawGamma(RNG & rng, double shape, double rate){
+        std::gamma_distribution<double> gamma {shape, 1. / rate};   // std:: takes the scale, 1/rate
+        return gamma(rng);
+    }
+
+    // log p(x): a log density, since x^{k-1} e^{-a x} over- or underflows for large k
+    inline double gammaLogDensity(double x, double shape, double rate){
+        return shape * std::log(rate) + (shape - 1.) * std::log(x) - rate * x - std::lgamma(shape);
+    }
 }
 
 #endif // !PROP_DISTRIBS_HPP

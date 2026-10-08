@@ -24,6 +24,7 @@
 #include "updates/chg_ph_momentum.hpp"
 #include "updates/chg_ph_energy.hpp"
 #include "updates/str_diagram.hpp"
+#include "updates/scl_diagram.hpp"
 
 static void unit(test::Checks & check){
     test::Diagram d {1ULL, {0.1, 0.2, 0.3}, 4, 4};
@@ -65,7 +66,8 @@ static void chain(test::Checks & check){
     swp_ph_update swp {&cfg, &d.rng};       mv_tau_update mv {&cfg, &d.rng};
     chg_tau_update ch {&cfg, &d.rng};       chg_ph_momentum chw {&cfg, &d.rng};
     chg_ph_energy che {&cfg, &d.rng};       str_diagram_update strd {&cfg, &d.rng};
-    std::uniform_int_distribution<int> pick {0, 9};
+    scl_diagram_update scld {&cfg, &d.rng};
+    std::uniform_int_distribution<int> pick {0, 10};
 
     const long STEPS {2000000};
     long mismatches {0}, dirty {0}, flips {0};
@@ -76,7 +78,8 @@ static void chain(test::Checks & check){
             case 2: step(adde, cfg, d.rng); break;  case 3: step(rme, cfg, d.rng); break;
             case 4: step(swp, cfg, d.rng); break;   case 5: step(mv, cfg, d.rng); break;
             case 6: step(ch, cfg, d.rng); break;    case 7: step(chw, cfg, d.rng); break;
-            case 8: step(che, cfg, d.rng); break;   default: step(strd, cfg, d.rng); break;
+            case 8: step(che, cfg, d.rng); break;   case 9: step(strd, cfg, d.rng); break;
+            default: step(scld, cfg, d.rng); break;
         }
         const double trace {cfg.diagram_head->right_component.trace()};
         if (cfg.current_sign != (trace < 0. ? -1 : 1)) { ++mismatches; }
@@ -86,7 +89,8 @@ static void chain(test::Checks & check){
 
     const std::uint64_t local {addi.sign.n_negative + rmi.sign.n_negative + adde.sign.n_negative + rme.sign.n_negative
                              + swp.sign.n_negative + mv.sign.n_negative + ch.sign.n_negative + chw.sign.n_negative
-                             + che.sign.n_negative + strd.sign.n_negative};
+                             + che.sign.n_negative + strd.sign.n_negative
+                             + scld.sign.n_negative};
     check(mismatches == 0 && dirty == 0,
           "tracked sign == sign(tr P) after each of %ld steps (%ld sign changes), sanitizer clean every 1000 steps",
           STEPS, flips);
