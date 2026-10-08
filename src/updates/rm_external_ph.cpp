@@ -9,7 +9,6 @@
 #include <cmath>
 #include <cstddef>
 #include <Eigen/Core>
-#include "utils/numerical.hpp"
 #include "diagram/vertex.hpp"
 #include "diagram/vertex_manager.hpp"
 
@@ -45,7 +44,7 @@ double rm_ext_ph_update::attempt(){
 
     const double tau_one {ptr_one->tau};
     const double tau_two {ptr_two->tau};
-    assert(!numerical::isEqual(tau_one, tau_two));
+    assert(tau_one != tau_two);   // exact: no move ever places two vertices at the same time
     
     const double ph_mode_energy {ptr_one->ph_energy};
     const double ph_mode_diel_response {ptr_one->diel_response};

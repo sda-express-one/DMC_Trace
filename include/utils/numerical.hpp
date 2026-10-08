@@ -5,7 +5,9 @@
 
 namespace numerical {
     // evaluates equality between two double precision values
-    inline bool isEqual(long double a, long double b, long double epsilon = 1e-9L) {return std::fabs(a - b) < epsilon;};
+    inline bool isEqual(long double a, long double b, long double epsilon = 1e-9L) {return std::fabs(a - b) < epsilon;}
+
+    inline bool isEqual(double a, double b, double epsilon = 1e-9){return std::fabs(a - b) < epsilon;}
 }
 
 #endif // !NUMERICAL_HPP

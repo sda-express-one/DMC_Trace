@@ -68,6 +68,14 @@ struct diagram_cfg {
 
     diagram_cfg(diagram_cfg&& other) noexcept;
 
+    // true iff tau lies strictly inside the segment [seg->tau, seg->tau_next]: no tie with either vertex.
+    // Comparisons between doubles are exact, so this needs no tolerance: a new time passing it leaves both
+    // new segments at least one ulp long, with exactly computed (Sterbenz) positive durations. In the
+    // negated-comparison sense a NaN tau is never inside.
+    static bool strictlyInside(const Vertex * seg, double tau) { return seg->tau < tau && tau < seg->tau_next; }
+
+    // The two searches below return the segment with seg->tau <= tau <= seg->tau_next: ties with either
+    // end are possible, so every caller placing a new vertex must check strictlyInside afterwards.
     Vertex * findPositionFromLeft(Vertex * left_most, const double tau_pos_to_find){
         assert(left_most !=  nullptr);
         assert(tau_pos_to_find > 0);

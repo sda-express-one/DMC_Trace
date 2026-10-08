@@ -9,7 +9,6 @@
 #include <cmath>
 #include <random>
 #include <Eigen/Core>
-#include "utils/numerical.hpp"
 #include "diagram/vertex.hpp"
 
 double add_ext_ph_update::attempt(){
@@ -42,14 +41,15 @@ double add_ext_ph_update::attempt(){
     tau_one = 0. - std::log(1-this->std_unif(*rng))/ph_mode_energy;
     tau_two = cfg->current_tau_length + std::log(1-this->std_unif(*rng))/ph_mode_energy;
 
-    if(tau_one < 0 || tau_two < 0){
+    // both times strictly inside (0, tau_D) and distinct, with exact comparisons (no tolerance): at large
+    // tau a double resolves times only to an ulp, so a draw can round onto the head, the tail or the other
+    // time. Such ties have probability zero in exact arithmetic and no move can produce them, so rejecting
+    // exactly them leaves the stationary distribution unchanged. The negated forms also reject a NaN.
+    if(!(tau_one > 0.) || !(tau_two > 0.) || !(tau_one < cfg->current_tau_length) || !(tau_two < cfg->current_tau_length)){
         return -1.;
     }
-    else if(numerical::isEqual(tau_one, tau_two)){
+    else if(!(tau_one != tau_two)){
         return -1.;
-    }
-    else if(tau_one > cfg->current_tau_length || tau_two > cfg->current_tau_length){
-        return -1;
     }
 
     w_proposed = w_proposal.draw(*this->rng, cfg->current_tau_length - tau_two + tau_one);
@@ -62,6 +62,11 @@ double add_ext_ph_update::attempt(){
 
         assert(ptr_one != nullptr);
         assert(ptr_two != nullptr);
+
+        // no tie with an existing vertex (the two times are distinct, so sharing a segment is fine)
+        if (!diagram_cfg::strictlyInside(ptr_one, tau_one) || !diagram_cfg::strictlyInside(ptr_two, tau_two)) {
+            return -1.;
+        }
 
         std::array<double, 3> p_fin {0., 0., 0.};
         double p_fin_sq {0.};
@@ -275,6 +280,11 @@ double add_ext_ph_update::attempt(){
 
         assert(ptr_one != nullptr);
         assert(ptr_two != nullptr);
+
+        // no tie with an existing vertex (the two times are distinct, so sharing a segment is fine)
+        if (!diagram_cfg::strictlyInside(ptr_one, tau_one) || !diagram_cfg::strictlyInside(ptr_two, tau_two)) {
+            return -1.;
+        }
 
         std::array<double, 3> p_fin {0., 0., 0.};
         double p_fin_sq {0.};

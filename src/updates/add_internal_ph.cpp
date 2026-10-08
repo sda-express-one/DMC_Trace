@@ -44,6 +44,14 @@ double add_int_ph_update::attempt(){
     
     this->tau_one = tau_init_v1 + std_unif(*rng)*(tau_end_v1 - tau_init_v1);
 
+    // At large tau a double resolves times only to an ulp (~1.5e-11 at 1e5): u * (segment length) can round
+    // tau_one onto either end of a short segment. Such a tie would leave a zero-length segment; it has
+    // probability zero in exact arithmetic and no move can produce it, so it is rejected exactly (no
+    // tolerance - comparisons between doubles are exact). Same below for tau_two.
+    if (!diagram_cfg::strictlyInside(ptr_one, tau_one)) {
+        return -1.;
+    }
+
     ph_index = this->cfg->phonon_mode_manager->drawPhononMode();
     const double ph_mode_energy {this->cfg->phonon_mode_manager->phonon_mode_pool[ph_index].phonon_energy};
     const double ph_mode_diel_response {this->cfg->phonon_mode_manager->phonon_mode_pool[ph_index].diel_response};
@@ -55,7 +63,7 @@ double add_int_ph_update::attempt(){
     // diagram_tail->tau is frequently much smaller than that - a phonon vertex can't legally sit
     // beyond where the worldline currently ends, and findPositionFromLeft would walk off the end
     // of the diagram (UB in release builds) if it tried.
-    if(tau_two > this->cfg->diagram_tail->tau){
+    if(!(tau_two > tau_one) || !(tau_two < this->cfg->diagram_tail->tau)){
         return -1;
     }
     
@@ -64,6 +72,10 @@ double add_int_ph_update::attempt(){
 
     // find position of new tau values
     ptr_two = this->cfg->findPositionFromLeft(ptr_one, this->tau_two);
+    // no tie with an existing vertex (tau_one < tau_two already covers the case ptr_two == ptr_one)
+    if (!diagram_cfg::strictlyInside(ptr_two, tau_two)) {
+        return -1.;
+    }
     
     std::array<double, 3> p_fin {0., 0., 0.};
     double p_fin_sq {0.};
