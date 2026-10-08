@@ -15,8 +15,6 @@ struct mv_tau_update {
     SignCounter sign;   // sign of the ratio, negative-diagram count (utils/sign_counter.hpp)
     mutable std::uniform_real_distribution<double> std_unif {0.,1.};
     Vertex * vertex {nullptr};
-    Eigen::Matrix3d new_action_el_incoming {Eigen::Matrix3d::Identity()};
-    Eigen::Matrix3d new_action_el_outgoing {Eigen::Matrix3d::Identity()};
     int index {-1};
     double tau_proposed {0.};
 

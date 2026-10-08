@@ -34,9 +34,14 @@ double chg_ph_momentum::attempt(){
     const int line {choose_line(*rng)};
 
     // product of the staged segments, accumulated left to right (in time order) as each one is staged
+    // The actions are band-normalised (full action = e^{-shift} * action): shift_new sums the staged
+    // segments' shifts, shift_old those of the segments they replace (one per staged segment, the vertex
+    // the walk is at), and the ratio carries e^{-(shift_new - shift_old)}.
     Eigen::Matrix3d new_matrix_product {Eigen::Matrix3d::Identity()};
-    auto fold = [&new_matrix_product](const weight::ProposedVertexWeight & w){
+    double shift_new {0.}, shift_old {0.};
+    auto fold = [&new_matrix_product, &shift_new](const weight::ProposedVertexWeight & w){
         new_matrix_product = new_matrix_product * w.vertex_wf_component * w.el_prop_action.diagonal().asDiagonal();
+        shift_new += w.action_shift;
     };
 
     double k_new_sq {0.};
@@ -80,12 +85,11 @@ double chg_ph_momentum::attempt(){
                 current_new_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(proposed_weights.back().baseWF, current_new_weight.baseWF);
             }
 
-            current_new_weight.el_prop_action(0,0) = std::exp(-k_new_sq/(2*current_new_weight.eff_masses[0])*(ptr->tau_next - ptr->tau));
-            current_new_weight.el_prop_action(1,1) = std::exp(-k_new_sq/(2*current_new_weight.eff_masses[1])*(ptr->tau_next - ptr->tau));
-            current_new_weight.el_prop_action(2,2) = std::exp(-k_new_sq/(2*current_new_weight.eff_masses[2])*(ptr->tau_next - ptr->tau));
+            weight::setSegmentAction(current_new_weight.el_prop_action, current_new_weight.action_shift, k_new_sq, current_new_weight.eff_masses, ptr->tau_next - ptr->tau);
 
             proposed_weights.push_back(current_new_weight);
             fold(proposed_weights.back());
+            shift_old += ptr->action_shift;
 
             ptr = ptr->next;
         }
@@ -98,7 +102,7 @@ double chg_ph_momentum::attempt(){
 
         proposed_weights.push_back(ptr_two_weight);
 
-        return sign.take(momentumRatio(w_proposal, (new_matrix_product * ptr_two->right_component * ptr_one->left_component).trace(), cfg->diagram_head->right_component.trace(),
+        return sign.take(std::exp(-(shift_new - shift_old)) * momentumRatio(w_proposal, (new_matrix_product * ptr_two->right_component * ptr_one->left_component).trace(), cfg->diagram_head->right_component.trace(),
                              w_current, w_proposed, tau_two - tau_one));
     }
     else {
@@ -141,12 +145,11 @@ double chg_ph_momentum::attempt(){
                     current_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(proposed_weights.back().baseWF, current_weight.baseWF);
                 }
 
-                current_weight.el_prop_action(0,0) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[0]))*(ptr->tau_next - ptr->tau));
-                current_weight.el_prop_action(1,1) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[1]))*(ptr->tau_next - ptr->tau));
-                current_weight.el_prop_action(2,2) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[2]))*(ptr->tau_next - ptr->tau));
+                weight::setSegmentAction(current_weight.el_prop_action, current_weight.action_shift, k_new_sq, current_weight.eff_masses, ptr->tau_next - ptr->tau);
 
                 proposed_weights.push_back(current_weight);
                 fold(proposed_weights.back());
+                shift_old += ptr->action_shift;
 
                 ptr = ptr->next;
             }
@@ -186,18 +189,17 @@ double chg_ph_momentum::attempt(){
                     current_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(proposed_weights_ext_second_term.back().baseWF, current_weight.baseWF);
                 }
 
-                current_weight.el_prop_action(0,0) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[0]))*(ptr->tau_next - ptr->tau));
-                current_weight.el_prop_action(1,1) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[1]))*(ptr->tau_next - ptr->tau));
-                current_weight.el_prop_action(2,2) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[2]))*(ptr->tau_next - ptr->tau));
+                weight::setSegmentAction(current_weight.el_prop_action, current_weight.action_shift, k_new_sq, current_weight.eff_masses, ptr->tau_next - ptr->tau);
 
                 proposed_weights_ext_second_term.push_back(current_weight);
                 fold(proposed_weights_ext_second_term.back());
+                shift_old += ptr->action_shift;
 
                 ptr = ptr->next;
             }
 
             // beginning * middle * end: the full diagram in time order
-            return sign.take(momentumRatio(w_proposal, new_matrix_product.trace(), cfg->diagram_head->right_component.trace(),
+            return sign.take(std::exp(-(shift_new - shift_old)) * momentumRatio(w_proposal, new_matrix_product.trace(), cfg->diagram_head->right_component.trace(),
                                  w_current, w_proposed, tau_length));
         }
         else {
@@ -225,12 +227,11 @@ double chg_ph_momentum::attempt(){
                     current_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(proposed_weights.back().baseWF, current_weight.baseWF);
                 }
 
-                current_weight.el_prop_action(0,0) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[0]))*(ptr->tau_next - ptr->tau));
-                current_weight.el_prop_action(1,1) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[1]))*(ptr->tau_next - ptr->tau));
-                current_weight.el_prop_action(2,2) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[2]))*(ptr->tau_next - ptr->tau));
+                weight::setSegmentAction(current_weight.el_prop_action, current_weight.action_shift, k_new_sq, current_weight.eff_masses, ptr->tau_next - ptr->tau);
 
                 proposed_weights.push_back(current_weight);
                 fold(proposed_weights.back());
+                shift_old += ptr->action_shift;
 
                 ptr = ptr->next;
             }
@@ -252,12 +253,11 @@ double chg_ph_momentum::attempt(){
                 
                 current_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(proposed_weights.back().baseWF, current_weight.baseWF);
 
-                current_weight.el_prop_action(0,0) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[0]))*(ptr->tau_next - ptr->tau));
-                current_weight.el_prop_action(1,1) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[1]))*(ptr->tau_next - ptr->tau));
-                current_weight.el_prop_action(2,2) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[2]))*(ptr->tau_next - ptr->tau));
+                weight::setSegmentAction(current_weight.el_prop_action, current_weight.action_shift, k_new_sq, current_weight.eff_masses, ptr->tau_next - ptr->tau);
 
                 proposed_weights.push_back(current_weight);
                 fold(proposed_weights.back());
+                shift_old += ptr->action_shift;
 
                 ptr = ptr->next;
             }
@@ -279,17 +279,16 @@ double chg_ph_momentum::attempt(){
                 
                 current_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(proposed_weights.back().baseWF, current_weight.baseWF);
 
-                current_weight.el_prop_action(0,0) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[0]))*(ptr->tau_next - ptr->tau));
-                current_weight.el_prop_action(1,1) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[1]))*(ptr->tau_next - ptr->tau));
-                current_weight.el_prop_action(2,2) = std::exp(-(k_new_sq/(2*current_weight.eff_masses[2]))*(ptr->tau_next - ptr->tau));
+                weight::setSegmentAction(current_weight.el_prop_action, current_weight.action_shift, k_new_sq, current_weight.eff_masses, ptr->tau_next - ptr->tau);
 
                 proposed_weights.push_back(current_weight);
                 fold(proposed_weights.back());
+                shift_old += ptr->action_shift;
 
                 ptr = ptr->next;
             }
 
-            return sign.take(momentumRatio(w_proposal, new_matrix_product.trace(), cfg->diagram_head->right_component.trace(),
+            return sign.take(std::exp(-(shift_new - shift_old)) * momentumRatio(w_proposal, new_matrix_product.trace(), cfg->diagram_head->right_component.trace(),
                                  w_current, w_proposed, tau_length));
         }
     }
@@ -303,6 +302,7 @@ void chg_ph_momentum::accept(){
         v->baseWF = staged.baseWF;
         v->vertex_wf_component = staged.vertex_wf_component;
         v->el_prop_action = staged.el_prop_action;
+        v->action_shift = staged.action_shift;
     };
 
     switch(branch){

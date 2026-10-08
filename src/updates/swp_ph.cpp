@@ -52,16 +52,11 @@ double swp_ph_update::attempt(){
     
     const double k_new_sq {k_new[0]*k_new[0] + k_new[1]*k_new[1] + k_new[2]*k_new[2]};
 
-    proposed_weights[0].el_prop_action(0,0) = std::exp(-k_new_sq/(2*proposed_weights[0].eff_masses[0])*(tau_two - tau_one));
-    proposed_weights[0].el_prop_action(1,1) = std::exp(-k_new_sq/(2*proposed_weights[0].eff_masses[1])*(tau_two - tau_one));
-    proposed_weights[0].el_prop_action(2,2) = std::exp(-k_new_sq/(2*proposed_weights[0].eff_masses[2])*(tau_two - tau_one));
+    weight::setSegmentAction(proposed_weights[0].el_prop_action, proposed_weights[0].action_shift, k_new_sq, proposed_weights[0].eff_masses, tau_two - tau_one);
 
-    //proposed_weights[1].eff_masses = ptr_two->eff_masses;
     proposed_weights[1].baseWF = ptr_two->baseWF;
     proposed_weights[1].vertex_wf_component = Coupling::LKOverlap::computeMatrix(proposed_weights[0].baseWF, proposed_weights[1].baseWF);
     
-    //proposed_weights[1].el_prop_action = ptr_two->el_prop_action;
-
     const double ph_energy_tot {c_one*ph_energy_one - c_two*ph_energy_two};
 
     const double numerator {
@@ -72,7 +67,9 @@ double swp_ph_update::attempt(){
          ptr_two->right_component * 
          ptr_one->left_component
         ).trace() *
-        std::exp(-ph_energy_tot*(tau_two - tau_one))
+        std::exp(-ph_energy_tot*(tau_two - tau_one)) *
+        // band-normalised actions: only ptr_one's segment is re-based, so S' - S is the change of its shift
+        std::exp(-(proposed_weights[0].action_shift - ptr_one->action_shift))
     };
 
     const double denominator{(this->cfg->diagram_head->right_component).trace()};
@@ -88,6 +85,7 @@ void swp_ph_update::accept(){
     ptr_one->baseWF = proposed_weights[0].baseWF;
     ptr_one->vertex_wf_component = proposed_weights[0].vertex_wf_component;
     ptr_one->el_prop_action = proposed_weights[0].el_prop_action;
+    ptr_one->action_shift = proposed_weights[0].action_shift;
 
     // ptr_two's own outgoing segment is untouched (same momentum, same duration) - only its
     // incoming overlap changes, since what feeds into it (ptr_one's new baseWF) changed.

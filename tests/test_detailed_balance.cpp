@@ -402,7 +402,9 @@ static void chg_w_case(test::Checks & check, const char * label, Line kind){
         build_line(d, kind, p, w0, t1, t2, L);
         // the hand-built diagram must be the one line_trace describes
         const double T0 {line_trace(kind, p, w0, dur)};
-        worst_start = std::max(worst_start, std::abs(d.cfg.diagram_head->right_component.trace() - T0) / std::abs(T0));
+        // the cache holds band-normalised actions: the full trace is T~ e^{-S}
+        const double T_cached {d.cfg.diagram_head->right_component.trace() * std::exp(-d.cfg.logWeightScale())};
+        worst_start = std::max(worst_start, std::abs(T_cached - T0) / std::abs(T0));
         chg_ph_momentum chw {&d.cfg, &d.rng};
         std::uniform_real_distribution<double> u {0., 1.};
         const Vertex * a {d.cfg.diagram_head->next};
@@ -467,6 +469,7 @@ static void chg_w_ratio_case(test::Checks & check){
         }
 
         const double T_before {cfg->diagram_head->right_component.trace()};
+        const double S_before {cfg->logWeightScale()};
         const int sign_before {cfg->current_sign};
         const double r {chw.attempt()};
         if (!(r > 0. && u(d.rng) < r)) { continue; }
@@ -484,7 +487,8 @@ static void chg_w_ratio_case(test::Checks & check){
 
         const double n_old {w_old[0]*w_old[0] + w_old[1]*w_old[1] + w_old[2]*w_old[2]};
         const double n_new {w_new[0]*w_new[0] + w_new[1]*w_new[1] + w_new[2]*w_new[2]};
-        const double expected {rep.trace_after / T_before * std::exp(-(n_old - n_new) * l / 2.)};
+        // band-normalised traces: the full ratio is (T~'/T~) e^{-(S' - S)}
+        const double expected {rep.trace_after / T_before * std::exp(-(cfg->logWeightScale() - S_before)) * std::exp(-(n_old - n_new) * l / 2.)};
         worst[b] = std::max(worst[b], std::abs(r / std::abs(expected) - 1.));
         const int expected_sign {expected < 0. ? -1 : 1};
         if (chw.sign.proposed_sign != expected_sign || sign_tracked != sign_before * expected_sign

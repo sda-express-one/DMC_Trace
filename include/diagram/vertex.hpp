@@ -6,6 +6,7 @@
 #include <cmath>
 #include <Eigen/Core>
 #include "comp_method/vertex_coupling.hpp"
+#include "comp_method/segment_action.hpp"
 
 
 struct Vertex {
@@ -18,7 +19,8 @@ struct Vertex {
     
     // electronic variables
     std::array<double, 3> eff_masses {1., 1., 1.};
-    Eigen::Matrix3d el_prop_action {Eigen::Matrix3d::Identity()};
+    Eigen::Matrix3d el_prop_action {Eigen::Matrix3d::Identity()};  // band-normalised (weight::setSegmentAction)
+    double action_shift {0.};                                        // E_min * duration: full action = e^{-action_shift} el_prop_action
     Eigen::Matrix3d baseWF {Eigen::Matrix3d::Identity()};
 
     // phononic variables
@@ -54,12 +56,10 @@ struct Vertex {
         return k_sq/(2*eff_masses[index]);
     }
 
+    // the segment's band-normalised action and its shift (see weight::setSegmentAction)
     inline void computeElPropAction(){
         assert(tau_next > tau);
-
-        this->el_prop_action(0,0) = std::exp(-this->electronEnergy(0)*(tau_next - tau));
-        this->el_prop_action(1,1) = std::exp(-this->electronEnergy(1)*(tau_next - tau));
-        this->el_prop_action(2,2) = std::exp(-this->electronEnergy(2)*(tau_next - tau));
+        weight::setSegmentAction(this->el_prop_action, this->action_shift, this->electronEnergy(), tau_next - tau);
     }
 
     inline double phononEnergy() const {

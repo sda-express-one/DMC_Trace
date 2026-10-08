@@ -20,7 +20,6 @@ struct str_diagram_update {
     simplemc::xoshiro256ss * rng {nullptr};
     mutable std::uniform_real_distribution<double> std_unif {0, 1};
     SignCounter sign;
-    std::vector<weight::ProposedVertexWeight> proposed_weights;  // per segment: only el_prop_action is used
     std::vector<double> proposed_tau_values;                     // new vertex times, head (0) ... tail (tau_D)
 
     str_diagram_update(diagram_cfg * cfg, simplemc::xoshiro256ss * rng)
@@ -29,7 +28,6 @@ struct str_diagram_update {
         assert(cfg != nullptr);
         assert(rng != nullptr);
         
-        proposed_weights.reserve(cfg->max_vertices);
         proposed_tau_values.reserve(cfg->max_vertices);
     }
 

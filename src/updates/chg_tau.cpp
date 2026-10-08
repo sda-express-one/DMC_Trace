@@ -35,10 +35,6 @@ double chg_tau_update::attempt(){
         return -1.;
     }
 
-    this->new_action(0,0) = std::exp(-energies[0]*(tau_proposed - this->tau_last_vertex));
-    this->new_action(1,1) = std::exp(-energies[1]*(tau_proposed - this->tau_last_vertex));
-    this->new_action(2,2) = std::exp(-energies[2]*(tau_proposed - this->tau_last_vertex));
-
     // Acceptance ratio. The proposal rate total_lowest_energy = E_min - mu + sum(omega_ext) does not
     // depend on the current tail position, so the reverse move draws from the same density; its mu
     // and external-phonon parts cancel exactly against the tau_D-dependence of exp(mu*tau_D) and of
@@ -74,7 +70,8 @@ void chg_tau_update::accept(){
     this->cfg->diagram_tail->tau = tau_proposed;
     this->cfg->current_tau_length = tau_proposed;
 
-    this->vertex->el_prop_action = this->new_action;
+    // the last segment's (band-normalised) action and shift for its new length
+    this->vertex->computeElPropAction();
 
     weight::LKMatrix::computeRightSide(cfg->diagram_head, cfg->diagram_tail);
     // only the last segment's action changed: every left_component up to the last vertex is

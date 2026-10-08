@@ -50,7 +50,8 @@ namespace numerical {
         // cached state vs what k and tau imply, measured BEFORE the rebuild
         double max_basis_dev {0.};      // |baseWF - U(k)|
         double max_mass_dev {0.};       // relative
-        double max_action_dev {0.};     // relative, diagonal of el_prop_action
+        double max_action_dev {0.};     // relative, diagonal of el_prop_action (band-normalised)
+        double max_shift_dev {0.};      // action_shift vs E_min * duration, relative to max(1, |E_min d|)
         double max_ph_action_dev {0.};  // relative, ph_action of both ends of every line vs e^{-omega l}
         double max_overlap_dev {0.};    // |vertex_wf_component - U_prev^T U_v|  (head: vs Identity)
         int overlap_flips {0};          // overlaps off by more than tolerances.flip
@@ -75,6 +76,7 @@ namespace numerical {
             return broken_links == 0 && bad_lines == 0 && overlap_flips == 0
                 && max_momentum_residual <= tol.momentum
                 && max_basis_dev <= tol.exact && max_mass_dev <= tol.exact && max_action_dev <= tol.exact
+                && max_shift_dev <= tol.exact
                 && max_ph_action_dev <= tol.exact
                 && closing_basis_dev <= tol.flip
                 && !sign_mismatch
@@ -168,14 +170,20 @@ namespace numerical {
 
             rep.max_basis_dev = std::max(rep.max_basis_dev, (v->baseWF - U).cwiseAbs().maxCoeff());
 
+            // the action as stored: band-normalised, diag(e^{-(E_n - E_min) d}), plus the shift E_min d
             const double k_sq {v->k[0]*v->k[0] + v->k[1]*v->k[1] + v->k[2]*v->k[2]};
+            const double duration {v->tau_next - v->tau};
+            const std::array<double, 3> e {k_sq/(2.*m[0]), k_sq/(2.*m[1]), k_sq/(2.*m[2])};
+            const double e_min {std::min({e[0], e[1], e[2]})};
             for (int i {0}; i < 3; ++i) {
                 rep.max_mass_dev = std::max(rep.max_mass_dev, std::abs(v->eff_masses[i] - m[i]) / std::abs(m[i]));
-                const double a {std::exp(-k_sq / (2. * m[i]) * (v->tau_next - v->tau))};
-                // floor the denominator: a long, energetic segment underflows to 0, and two zeros agree
+                const double a {std::exp(-(e[i] - e_min) * duration)};
+                // floor the denominator: an upper band of a long segment can underflow to 0, and two zeros agree
                 const double denom {std::max(a, std::numeric_limits<double>::min())};
                 rep.max_action_dev = std::max(rep.max_action_dev, std::abs(v->el_prop_action(i,i) - a) / denom);
             }
+            rep.max_shift_dev = std::max(rep.max_shift_dev,
+                                         std::abs(v->action_shift - e_min*duration) / std::max(1., std::abs(e_min*duration)));
 
             // overlaps are checked against the STORED neighbouring bases: that is the consistency the
             // trace product needs, and the place where a reused cached overlap shows up

@@ -39,6 +39,15 @@ struct diagram_cfg {
 
     void countSign() { if (current_sign < 0) { ++n_negative; } }
 
+    // S = sum of the segments' action shifts: the diagram's full electronic trace is
+    // diagram_head->right_component.trace() * e^{-S} (the cache holds band-normalised actions). O(N);
+    // for tests and diagnostics - the updates only ever need differences of S over the segments they change.
+    double logWeightScale() const {
+        double S {0.};
+        for (const Vertex * v {diagram_head}; v != diagram_tail; v = v->next) { S += v->action_shift; }
+        return S;
+    }
+
     diagram_cfg(
             std::array<double, 3> k_init = {0, 0, 0},
             double tau_max = 50.0,

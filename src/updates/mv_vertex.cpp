@@ -67,15 +67,6 @@ double mv_tau_update::attempt(){
         return -1.;
     }
 
-    // full actions of the two re-timed segments, committed by accept()
-    new_action_el_incoming(0,0) = std::exp(-energies_incoming[0]*(tau_proposed-tau_prev));
-    new_action_el_incoming(1,1) = std::exp(-energies_incoming[1]*(tau_proposed-tau_prev));
-    new_action_el_incoming(2,2) = std::exp(-energies_incoming[2]*(tau_proposed-tau_prev));
-
-    new_action_el_outgoing(0,0) = std::exp(-energies_outgoing[0]*(tau_next-tau_proposed));
-    new_action_el_outgoing(1,1) = std::exp(-energies_outgoing[1]*(tau_next-tau_proposed));
-    new_action_el_outgoing(2,2) = std::exp(-energies_outgoing[2]*(tau_next-tau_proposed));
-
     // Acceptance ratio. Detailed balance needs W(y)/W(x) * p(tau_x)/p(tau_y) with the proposal
     // density p above; its normalisation cancels (deltaE and L do not depend on tau_v, so the reverse
     // move draws from the same p), and its phonon part (-ph_energy) cancels exactly against the
@@ -120,8 +111,9 @@ void mv_tau_update::accept(){
     this->vertex->prev->tau_next = tau_proposed;
     this->vertex->tau = tau_proposed;
     
-    this->vertex->prev->el_prop_action = new_action_el_incoming;
-    this->vertex->el_prop_action =  new_action_el_outgoing;
+    // the two re-timed segments' (band-normalised) actions and shifts
+    this->vertex->prev->computeElPropAction();
+    this->vertex->computeElPropAction();
 
     weight::LKMatrix::computeRightSide(this->cfg->diagram_head, this->vertex->next);
     weight::LKMatrix::computeLeftSide(this->cfg->diagram_tail, this->vertex->prev);

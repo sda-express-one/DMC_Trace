@@ -70,10 +70,13 @@ double add_int_ph_update::attempt(){
 
     Vertex * ptr {ptr_one};
 
-    // product of the staged segments, accumulated left to right as each one is staged
+    // product of the staged segments, accumulated left to right as each one is staged, and the sum of
+    // their action shifts (the actions are band-normalised: full action = e^{-shift} * action)
     Eigen::Matrix3d new_matrix_product {Eigen::Matrix3d::Identity()};
-    auto fold = [&new_matrix_product](const weight::ProposedVertexWeight & w){
+    double shift_new {0.};
+    auto fold = [&new_matrix_product, &shift_new](const weight::ProposedVertexWeight & w){
         new_matrix_product = new_matrix_product * w.vertex_wf_component * w.el_prop_action.diagonal().asDiagonal();
+        shift_new += w.action_shift;
     };
 
     Eigen::Matrix<double, 4, 3> eigensolution_wrapper;
@@ -94,9 +97,7 @@ double add_int_ph_update::attempt(){
             current_new_weight.baseWF = eigensolution_wrapper.block<3,3>(1,0);
             current_new_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(ptr_one->baseWF, current_new_weight.baseWF);  
             
-            current_new_weight.el_prop_action(0,0) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[0])*(this->tau_two - this->tau_one)); 
-            current_new_weight.el_prop_action(1,1) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[1])*(this->tau_two - this->tau_one));
-            current_new_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[2])*(this->tau_two - this->tau_one));
+            weight::setSegmentAction(current_new_weight.el_prop_action, current_new_weight.action_shift, p_fin_sq, current_new_weight.eff_masses, this->tau_two - this->tau_one);
             
             weight::ProposedVertexWeight second_current_new_weight;
 
@@ -106,9 +107,7 @@ double add_int_ph_update::attempt(){
             second_current_new_weight.eff_masses = ptr_two->eff_masses;
 
             double k_final_sq = second_current_new_weight.k[0]*second_current_new_weight.k[0] + second_current_new_weight.k[1]*second_current_new_weight.k[1] + second_current_new_weight.k[2]*second_current_new_weight.k[2];
-            second_current_new_weight.el_prop_action(0,0) = std::exp(-k_final_sq/(2*second_current_new_weight.eff_masses[0])*(ptr_two->tau_next - tau_two));
-            second_current_new_weight.el_prop_action(1,1) = std::exp(-k_final_sq/(2*second_current_new_weight.eff_masses[1])*(ptr_two->tau_next - tau_two));
-            second_current_new_weight.el_prop_action(2,2) = std::exp(-k_final_sq/(2*second_current_new_weight.eff_masses[2])*(ptr_two->tau_next - tau_two));
+            weight::setSegmentAction(second_current_new_weight.el_prop_action, second_current_new_weight.action_shift, k_final_sq, second_current_new_weight.eff_masses, ptr_two->tau_next - tau_two);
 
             proposed_weights.push_back(current_new_weight);
             fold(proposed_weights.back());
@@ -119,9 +118,7 @@ double add_int_ph_update::attempt(){
             current_new_weight.baseWF = eigensolution_wrapper.block<3,3>(1,0);
             current_new_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(ptr_one->baseWF, current_new_weight.baseWF);
             
-            current_new_weight.el_prop_action(0,0) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[0])*(ptr_one->tau_next - this->tau_one)); 
-            current_new_weight.el_prop_action(1,1) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[1])*(ptr_one->tau_next - this->tau_one));
-            current_new_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[2])*(ptr_one->tau_next - this->tau_one));
+            weight::setSegmentAction(current_new_weight.el_prop_action, current_new_weight.action_shift, p_fin_sq, current_new_weight.eff_masses, ptr_one->tau_next - this->tau_one);
 
             proposed_weights.push_back(current_new_weight);
             fold(proposed_weights.back());
@@ -130,9 +127,7 @@ double add_int_ph_update::attempt(){
             current_new_weight.baseWF = eigensolution_wrapper.block<3,3>(1,0);
             current_new_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(proposed_weights.back().baseWF, current_new_weight.baseWF);
             
-            current_new_weight.el_prop_action(0,0) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[0])*(this->tau_two - ptr_two->tau)); 
-            current_new_weight.el_prop_action(1,1) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[1])*(this->tau_two - ptr_two->tau));
-            current_new_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[2])*(this->tau_two - ptr_two->tau));
+            weight::setSegmentAction(current_new_weight.el_prop_action, current_new_weight.action_shift, p_fin_sq, current_new_weight.eff_masses, this->tau_two - ptr_two->tau);
 
             weight::ProposedVertexWeight second_current_new_weight;
 
@@ -141,9 +136,7 @@ double add_int_ph_update::attempt(){
             second_current_new_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(current_new_weight.baseWF, second_current_new_weight.baseWF);
             second_current_new_weight.eff_masses = ptr_two->eff_masses;
             double k_final_sq = second_current_new_weight.k[0]*second_current_new_weight.k[0] + second_current_new_weight.k[1]*second_current_new_weight.k[1] + second_current_new_weight.k[2]*second_current_new_weight.k[2];
-            second_current_new_weight.el_prop_action(0,0) = std::exp(-k_final_sq/(2*second_current_new_weight.eff_masses[0])*(ptr_two->tau_next - tau_two));
-            second_current_new_weight.el_prop_action(1,1) = std::exp(-k_final_sq/(2*second_current_new_weight.eff_masses[1])*(ptr_two->tau_next - tau_two));
-            second_current_new_weight.el_prop_action(2,2) = std::exp(-k_final_sq/(2*second_current_new_weight.eff_masses[2])*(ptr_two->tau_next - tau_two));
+            weight::setSegmentAction(second_current_new_weight.el_prop_action, second_current_new_weight.action_shift, k_final_sq, second_current_new_weight.eff_masses, ptr_two->tau_next - tau_two);
 
             proposed_weights.push_back(current_new_weight);
             fold(proposed_weights.back());
@@ -154,9 +147,7 @@ double add_int_ph_update::attempt(){
             current_new_weight.baseWF = eigensolution_wrapper.block<3,3>(1,0);
             current_new_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(proposed_weights.back().baseWF, current_new_weight.baseWF);
             
-            current_new_weight.el_prop_action(0,0) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[0])*(ptr->tau_next - ptr->tau)); 
-            current_new_weight.el_prop_action(1,1) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[1])*(ptr->tau_next - ptr->tau));
-            current_new_weight.el_prop_action(2,2) = std::exp(-p_fin_sq/(2*current_new_weight.eff_masses[2])*(ptr->tau_next - ptr->tau));
+            weight::setSegmentAction(current_new_weight.el_prop_action, current_new_weight.action_shift, p_fin_sq, current_new_weight.eff_masses, ptr->tau_next - ptr->tau);
 
             proposed_weights.push_back(current_new_weight);
             fold(proposed_weights.back());
@@ -169,11 +160,17 @@ double add_int_ph_update::attempt(){
     // merges it away), but its own leading segment shrinks from [tau_init_v1, tau_end_v1] down to
     // [tau_init_v1, tau_one] - same (unshifted) momentum, shorter duration, so its cached action is
     // now stale and has to be recomputed rather than reused or left out of the trace.
-    const std::array<double, 3> ptr_one_energies {ptr_one->electronEnergy()};
     Eigen::Matrix3d ptr_one_action_new {Eigen::Matrix3d::Identity()};
-    ptr_one_action_new(0,0) = std::exp(-ptr_one_energies[0]*(this->tau_one - tau_init_v1));
-    ptr_one_action_new(1,1) = std::exp(-ptr_one_energies[1]*(this->tau_one - tau_init_v1));
-    ptr_one_action_new(2,2) = std::exp(-ptr_one_energies[2]*(this->tau_one - tau_init_v1));
+    double ptr_one_shift_new {0.};
+    weight::setSegmentAction(ptr_one_action_new, ptr_one_shift_new, ptr_one->electronEnergy(), this->tau_one - tau_init_v1);
+    shift_new += ptr_one_shift_new;
+
+    // the segments the move replaces: ptr_one's (shortened above) through ptr_two's (split at tau_two)
+    double shift_old {0.};
+    for (const Vertex * v {ptr_one}; ; v = v->next) {
+        shift_old += v->action_shift;
+        if (v == ptr_two) { break; }
+    }
 
     // new_matrix_product holds every staged entry's wf*action (including the last one's action) - the
     // chain is closed out on the right by ptr_two->next (skipping ptr_two's own now-superseded
@@ -185,6 +182,8 @@ double add_int_ph_update::attempt(){
             Coupling::Strength::squaredTimesMomentumSquared(ph_mode_energy, ph_mode_diel_response) *
             std::exp(-ph_mode_energy*(this->tau_two - this->tau_one))
     };
+    // the traces are built from band-normalised actions: the full ratio carries e^{-(S' - S)}, S' - S the
+    // change of the summed shifts over the replaced segments (applied in the numerator below)
     const double weights_current {this->cfg->diagram_head->right_component.trace()};
 
     const double p_B {static_cast<double>(this->cfg->internal_ph_manager->current_length + this->cfg->external_ph_manager->current_length + 1)};
@@ -203,7 +202,8 @@ double add_int_ph_update::attempt(){
         weights_proposed * 
         (tau_end_v1 - tau_init_v1) * 
         Coupling::Parameters::V_unit_cell *
-        n_modes   // [N_MODES NORMALIZATION - TO BE VERIFIED]
+        n_modes *   // [N_MODES NORMALIZATION - TO BE VERIFIED]
+        std::exp(-(shift_new - shift_old))
     };
     const double denominator {
         p_A *
@@ -239,6 +239,7 @@ void add_int_ph_update::accept(){
             ptr->baseWF = proposed_weights[idx].baseWF;
             ptr->vertex_wf_component = proposed_weights[idx].vertex_wf_component;
             ptr->el_prop_action = proposed_weights[idx].el_prop_action;
+            ptr->action_shift = proposed_weights[idx].action_shift;
             ptr = ptr->next;
             ++idx;
         }
@@ -248,6 +249,7 @@ void add_int_ph_update::accept(){
         ptr_two->baseWF = proposed_weights[idx].baseWF;
         ptr_two->vertex_wf_component = proposed_weights[idx].vertex_wf_component;
         ptr_two->el_prop_action = proposed_weights[idx].el_prop_action;
+        ptr_two->action_shift = proposed_weights[idx].action_shift;
         ptr_two->tau_next = tau_two;
     }
 
@@ -278,6 +280,7 @@ void add_int_ph_update::accept(){
     v_one->baseWF = proposed_weights.front().baseWF;
     v_one->vertex_wf_component = proposed_weights.front().vertex_wf_component;
     v_one->el_prop_action = proposed_weights.front().el_prop_action;
+    v_one->action_shift = proposed_weights.front().action_shift;
 
     v_two->tau_next = v_two->next->tau;
     v_two->type = -1; // annihilation - later in tau
@@ -289,6 +292,7 @@ void add_int_ph_update::accept(){
     v_two->baseWF = proposed_weights.back().baseWF;
     v_two->vertex_wf_component = proposed_weights.back().vertex_wf_component;
     v_two->el_prop_action = proposed_weights.back().el_prop_action;
+    v_two->action_shift = proposed_weights.back().action_shift;
 
     v_one->conj_vertex = v_two;
     v_two->conj_vertex = v_one;

@@ -15,7 +15,6 @@ struct chg_tau_update {
     SignCounter sign;   // sign of the ratio, negative-diagram count (utils/sign_counter.hpp)
     mutable std::uniform_real_distribution<double> std_unif {0.,1.};
     Vertex * vertex {nullptr};
-    Eigen::Matrix3d new_action {Eigen::Matrix3d::Identity()};
     double tau_last_vertex {0.};
     double tau_proposed {0.};
 
