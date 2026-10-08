@@ -135,8 +135,9 @@ double rm_int_ph_update::attempt(){
 
     const double weight_current {
         this->cfg->diagram_head->right_component.trace() *
-        Coupling::Strength::squaredTimesMomentumSquared(ptr_one->ph_energy, ptr_one->diel_response) *
-            std::exp(-ptr_one->ph_energy*(ptr_two->tau - ptr_one->tau))
+        Coupling::Strength::squaredTimesMomentumSquared(ptr_one->ph_energy, ptr_one->diel_response)
+        // the line's propagator e^{-omega l} is left out here and in the proposal density below: the two are
+        // identical and cancel, and forming them would give 0/0 (NaN) once omega*l passes ~745
     };
 
     // inverse of add_int_ph's ratio, with the momentum per dr dOmega in the same way: |g|^2|w|^2 for the
@@ -152,7 +153,7 @@ double rm_int_ph_update::attempt(){
         std::exp(-(shift_new - shift_old)) *
         p_A *
         weight_proposed *
-        ptr_one->ph_energy * std::exp(-ptr_one->ph_energy*(tau_two - tau_one)) *
+        ptr_one->ph_energy *   // times e^{-omega l}, cancelled against the weight's
         std::pow(2.*std::numbers::pi, 3) *
         this->w_proposal.sphericalDensity(w_to_reject, tau_two - tau_one)
     };

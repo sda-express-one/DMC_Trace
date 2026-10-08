@@ -191,8 +191,9 @@ double add_int_ph_update::attempt(){
 
     const double weights_proposed {
         (new_matrix_product * ptr_two->next->vertex_wf_component * ptr_two->next->right_component * ptr_one->left_component * ptr_one->vertex_wf_component * ptr_one_action_new.diagonal().asDiagonal()).trace() *
-            Coupling::Strength::squaredTimesMomentumSquared(ph_mode_energy, ph_mode_diel_response) *
-            std::exp(-ph_mode_energy*(this->tau_two - this->tau_one))
+            Coupling::Strength::squaredTimesMomentumSquared(ph_mode_energy, ph_mode_diel_response)
+            // the line's propagator e^{-omega l} is left out here and in the proposal density below: the two are
+            // identical and cancel, and forming them would give 0/0 (NaN) once omega*l passes ~745
     };
     // the traces are built from band-normalised actions: the full ratio carries e^{-(S' - S)}, S' - S the
     // change of the summed shifts over the replaced segments (applied in the numerator below)
@@ -220,7 +221,7 @@ double add_int_ph_update::attempt(){
     const double denominator {
         p_A *
         weights_current *
-        ph_mode_energy * std::exp(-ph_mode_energy*(tau_two - tau_one)) *
+        ph_mode_energy *   // times e^{-omega l}, cancelled against the weight's
         std::pow(2.*std::numbers::pi, 3) * 
         this->w_proposal.sphericalDensity(w_proposed, this->tau_two - this->tau_one)
     };

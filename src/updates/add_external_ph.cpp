@@ -233,8 +233,9 @@ double add_ext_ph_update::attempt(){
         // proposal as its sphericalDensity, both finite at w = 0.
         const double weight_proposed {
             (beginning_product * middle_product * end_product).trace() *
-            Coupling::Strength::squaredTimesMomentumSquared(ph_mode_energy, ph_mode_diel_response) *
-            std::exp(-ph_mode_energy*(cfg->current_tau_length - tau_two + tau_one))
+            Coupling::Strength::squaredTimesMomentumSquared(ph_mode_energy, ph_mode_diel_response)
+            // the line's propagator e^{-omega l} is left out here and in the proposal density below: the two are
+            // identical and cancel, and forming them would give 0/0 (NaN) once omega*l passes ~745
         };
         const double weight_current {this->cfg->diagram_head->right_component.trace()};
 
@@ -262,7 +263,7 @@ double add_ext_ph_update::attempt(){
             p_A *
             std::pow(2*std::numbers::pi, 3) *
             weight_current *
-            ph_mode_energy *ph_mode_energy * std::exp(-ph_mode_energy*(cfg->current_tau_length - tau_two + tau_one)) *
+            ph_mode_energy * ph_mode_energy *   // times e^{-omega l}, cancelled against the weight's
             w_proposal.sphericalDensity(w_proposed, cfg->current_tau_length - tau_two + tau_one)
         };
 
@@ -454,8 +455,9 @@ double add_ext_ph_update::attempt(){
         // length w_proposed was drawn with above.
         const double weight_proposed {
             (beginning_product * middle_product * end_product).trace() *
-            Coupling::Strength::squaredTimesMomentumSquared(ph_mode_energy, ph_mode_diel_response) *
-            std::exp(-ph_mode_energy*(cfg->current_tau_length - tau_two + tau_one))
+            Coupling::Strength::squaredTimesMomentumSquared(ph_mode_energy, ph_mode_diel_response)
+            // the line's propagator e^{-omega l} is left out here and in the proposal density below: the two are
+            // identical and cancel, and forming them would give 0/0 (NaN) once omega*l passes ~745
         };
         const double weight_current {this->cfg->diagram_head->right_component.trace()};
 
@@ -480,7 +482,7 @@ double add_ext_ph_update::attempt(){
             p_A *
             std::pow(2*std::numbers::pi, 3) *
             weight_current *
-            ph_mode_energy * ph_mode_energy * std::exp(-ph_mode_energy*(cfg->current_tau_length - tau_two + tau_one)) *
+            ph_mode_energy * ph_mode_energy *   // times e^{-omega l}, cancelled against the weight's
             w_proposal.sphericalDensity(w_proposed, cfg->current_tau_length - tau_two + tau_one)
         };
 
