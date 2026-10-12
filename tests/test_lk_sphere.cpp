@@ -3,7 +3,7 @@
 // For A > B (AlAs) and A < B (swapped), on a theta x phi grid:
 //   - the returned columns diagonalise H_LK(k_hat) built in the ORIGINAL frame (so the IBZ fold and
 //     unfold are right), each paired with the eigenvalue returned next to it, and are orthonormal;
-//   - eigenvalues come back descending for A > B and ascending for A <= B, at every point;
+//   - eigenvalues come back ascending, for A > B as for A <= B, at every point;
 //   - the basis is continuous inside every IBZ sector: any jump between neighbouring grid points
 //     (sign flip, reordering or rotation) lies across a sector boundary or within a few grid steps of
 //     a fold plane (k_i = 0, |k_i| = |k_j|), where the degeneracy points (100) and (111) also lie.
@@ -54,7 +54,6 @@ static bool smooth(const M3 & U_prev, const M3 & U){
 
 static void scan(test::Checks & check, const char * label, const std::array<double, 3> & abc, FILE * out){
     test::setLK(abc);
-    const bool a_gt_b {abc[0] > abc[1]};
     const int Nt {90}, Np {180};
     const double step {std::numbers::pi / Nt};
     std::vector<M3> U(static_cast<std::size_t>(Nt*Np));
@@ -77,8 +76,7 @@ static void scan(test::Checks & check, const char * label, const std::array<doub
             }
             worst_orth = std::max(worst_orth, (U[n].transpose()*U[n] - M3::Identity()).cwiseAbs().maxCoeff());
             const double e {1e-12};
-            const bool ok {a_gt_b ? (r(0,0) >= r(0,1) - e && r(0,1) >= r(0,2) - e)
-                                  : (r(0,0) <= r(0,1) + e && r(0,1) <= r(0,2) + e)};
+            const bool ok {r(0,0) <= r(0,1) + e && r(0,1) <= r(0,2) + e};
             if (!ok) { ++bad_order; }
             if (out != nullptr) {
                 std::fprintf(out, "%.4f %.6f %.10f %.10f %.10f %d\n", j*360./Np, std::cos(th), r(0,0), r(0,1), r(0,2), sector[n]);
@@ -88,7 +86,7 @@ static void scan(test::Checks & check, const char * label, const std::array<doub
     }
     check(worst_resid < 1e-12, "%s: columns diagonalise H in the original frame, paired with their eigenvalues (max residual %.1e)", label, worst_resid);
     check(worst_orth < 1e-12, "%s: eigenvector matrices orthonormal (max |U^T U - I| %.1e)", label, worst_orth);
-    check(bad_order == 0, "%s: eigenvalues %s at all %zu points (%ld violations)", label, a_gt_b ? "descending" : "ascending", U.size(), bad_order);
+    check(bad_order == 0, "%s: eigenvalues ascending at all %zu points (%ld violations)", label, U.size(), bad_order);
 
     long jumps {0}, at_boundary {0}, in_bulk {0};
     for (int i {0}; i < Nt; ++i) {

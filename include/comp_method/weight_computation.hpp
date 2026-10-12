@@ -28,7 +28,7 @@ namespace weight {
 
     }
 
-    namespace LKMatrix {
+    struct LKMatrix {
         struct choice{
             std::array<int, 3> position {0, 1, 2};
             std::array<int, 3> sign {1, 1, 1};
@@ -42,13 +42,13 @@ namespace weight {
         inline static double B_LK {1.};
         inline static double C_LK {0.};
 
-        inline static void setLKParameters(double A_LK, double B_LK, double C_LK){
+        static void setLKParameters(double A_LK, double B_LK, double C_LK){
             weight::LKMatrix::A_LK = A_LK;
             weight::LKMatrix::B_LK = B_LK;
             weight::LKMatrix::C_LK = C_LK;
         }
 
-        inline choice selectionRulesLK(const std::array<double, 3> k){
+        static choice selectionRulesLK(const std::array<double, 3> k){
             choice eigenv_gauge; // position starts at the identity {0, 1, 2}
 
             // sort axis indices by |k| descending; stable_sort keeps the lower original
@@ -61,10 +61,10 @@ namespace weight {
             }
 
             return eigenv_gauge;
-        };
+        }
 
         // diagonalizes LK Hamiltonian and returns eigenvalues and eigenvectors in correct order
-        inline Eigen::Matrix<double, 4, 3> diagonalizeLKHamiltonian(const std::array<double, 3> k){
+        static Eigen::Matrix<double, 4, 3> diagonalizeLKHamiltonian(const std::array<double, 3> k){
     
             Eigen::Matrix<double, 4, 3> result;
     
@@ -109,39 +109,57 @@ namespace weight {
                      C_LK*k_vector[0]*k_vector[1], A_LK*k_vector[1]*k_vector[1] + B_LK*(k_vector[0]*k_vector[0] + k_vector[2]*k_vector[2]), C_LK*k_vector[1]*k_vector[2],
                      C_LK*k_vector[0]*k_vector[2], C_LK*k_vector[1]*k_vector[2], A_LK*k_vector[2]*k_vector[2] + B_LK*(k_vector[0]*k_vector[0] + k_vector[1]*k_vector[1]);
     
-            Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigensolver; 
-            eigensolver.compute(LK_matrix); // compute eigenvalues and eigenvectors
+            // Bands are always returned in ascending eigenvalue order: band 0 has the smallest 1/(2m), i.e. it
+            // is the heaviest band and the lowest in energy, whatever A, B and C are.
+            Eigen::Matrix3d eigenvectors;
+            Eigen::RowVector3d eigenvalues;
+
+            if(C_LK == 0.){
+                // C = 0: the matrix is diagonal, d_i = B + (A - B) k_i^2, so the eigenvectors are the axes
+                // themselves - taken exactly instead of from the solver. For A = B the matrix is A * I only
+                // up to rounding, and the solver would return a basis set by that noise, different for two
+                // momenta one ulp apart (e.g. the first and last segment): the trace would then not close.
+                // In the wedge k_0 >= k_1 >= k_2, so the diagonal is descending for A > B and ascending for
+                // A < B: for A > B the axes are taken in reverse. The order is fixed by A and B, never by
+                // comparing the d_i, which for A = B are equal up to rounding.
+                const Eigen::Vector3d d {LK_matrix.diagonal()};
+                if(A_LK > B_LK){
+                    eigenvectors << 0., 0., 1.,
+                                    0., 1., 0.,
+                                    1., 0., 0.;
+                    eigenvalues << d(2), d(1), d(0);
+                }
+                else {
+                    eigenvectors.setIdentity();
+                    eigenvalues = d.transpose();
+                }
+            }
+            else {
+                Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigensolver;
+                eigensolver.compute(LK_matrix); // compute eigenvalues and eigenvectors
 
                 if(eigensolver.info() != 0){
-                const double nan {std::numeric_limits<double>::quiet_NaN()};
-                result << nan, nan, nan,
-                          nan, nan, nan,
-                          nan, nan, nan,
-                          nan, nan, nan;
-                return result; // solver failure sentinel (NaN, never a valid eigenvalue)
+                    const double nan {std::numeric_limits<double>::quiet_NaN()};
+                    result << nan, nan, nan,
+                              nan, nan, nan,
+                              nan, nan, nan,
+                              nan, nan, nan;
+                    return result; // solver failure sentinel (NaN, never a valid eigenvalue)
+                }
+
+                eigenvectors = eigensolver.eigenvectors(); // eigenvector matrix
+                eigenvalues = eigensolver.eigenvalues().transpose(); // eigenvalues row vector (from smallest to largest)
             }
 
-            Eigen::Matrix3d eigenvectors {eigensolver.eigenvectors()}; // eigenvector matrix 
-            Eigen::RowVector3d eigenvalues {eigensolver.eigenvalues().transpose()}; // eigenvalues row vector (from smallest to largest)
-
-            // reorder eigenvectors and eigenvalues (greatest eigenvalue first band for A_LK > B_LK)
-            if(A_LK > B_LK){
-                double eigenval_temp {0.};
-                Eigen::Vector3d column;
-
-                column = eigenvectors.col(2);
-                eigenvectors.col(2) = eigenvectors.col(0);
-                eigenvectors.col(0) = column;
-
-                eigenval_temp = eigenvalues(0);
-                eigenvalues(0) = eigenvalues(2);
-                eigenvalues(2) = eigenval_temp;
+            // sign gauge: each eigenvector's component along its reference axis is made positive. In the wedge
+            // the bands, in ascending order, lie mostly along axes 0, 1, 2 for A <= B and along 2, 1, 0 for
+            // A > B (near (100): eigenvalues A on axis 0 and B on axes 1, 2), so the reference axis of band n
+            // is n or 2 - n (the same vectors as the earlier positive-diagonal rule applied before reordering;
+            // tests/test_lk_sphere checks that the basis is continuous inside every wedge)
+            const bool reversed {A_LK > B_LK};
+            for (int n {0}; n < 3; ++n) {
+                if(eigenvectors(reversed ? 2 - n : n, n) < 0){ eigenvectors.col(n) *= -1; }
             }
-
-            // check all diagonal component > 0
-            if(eigenvectors(0,0) < 0){eigenvectors.col(0)*=-1;}
-            if(eigenvectors(1,1) < 0){eigenvectors.col(1)*=-1;}
-            if(eigenvectors(2,2) < 0){eigenvectors.col(2)*=-1;}
 
             // back from the IBZ to the original sector: the transformation is a signed permutation T with
             // T(position[i], i) = sign[i] and zeros elsewhere, so T * eigenvectors just moves row i to row
@@ -157,19 +175,18 @@ namespace weight {
 
             // return packed result
             return result;
-        };
+        }
 
         // diagonalizes LK Hamiltonian and returns eigenvalues (no eigenvectors), for effective mass exact estimator
-        inline Eigen::RowVector3d diagonalizeLKHamiltonianEigenval(const std::array<double, 3> k){
+        static Eigen::RowVector3d diagonalizeLKHamiltonianEigenval(const std::array<double, 3> k){
 
             Eigen::RowVector3d eigenvalues;
         
             // free propagator: same degenerate eigenvalues as diagonalizeLKHamiltonian's k=(0,0,0)
             // case - H_LK vanishes at the extremum, so nothing is split, and 1 rather than 0 only
             // because the caller inverts it for the mass. See there for the full reasoning.
-            // Note that away from k = 0 this function returns the solver's ascending order,
-            // whereas diagonalizeLKHamiltonian puts the largest first when A > B - so for A > B
-            // the two disagree on band ordering in the general path even though they agree here.
+            // Away from k = 0 this function returns the solver's ascending order, the same band order
+            // as diagonalizeLKHamiltonian.
             if(numerical::isEqual(k[0],0) && numerical::isEqual(k[1],0) && numerical::isEqual(k[2],0)){
                 eigenvalues << 1., 1., 1.;
                 return eigenvalues;
@@ -197,18 +214,18 @@ namespace weight {
             eigenvalues = eigensolver.eigenvalues().transpose(); // eigenvalues row vector (from smallest to largest)
 
             return eigenvalues;
-        };
+        }
 
         // electron effective mass from LK eigenvalue
-        inline double computeEffMassfromEigenval(double eigenval){
+        static double computeEffMassfromEigenval(double eigenval){
             return 1/(2*eigenval);
-        };
+        }
 
-        inline std::array<double, 3> computeEffMassfromEigenval(std::array<double, 3> eigenval){
+        static std::array<double, 3> computeEffMassfromEigenval(std::array<double, 3> eigenval){
             return std::array<double, 3> {1/(2*eigenval[0]), 1/(2*eigenval[1]), 1/(2*eigenval[2])};
         }
     
-        inline void computeRightSide(Vertex * left_most, Vertex * right_most){
+        static void computeRightSide(Vertex * left_most, Vertex * right_most){
             assert(left_most != nullptr);
             assert(right_most != nullptr);
 
@@ -239,7 +256,7 @@ namespace weight {
             ptr->right_component = weight_right;
         }
 
-        inline void computeLeftSide(Vertex * right_most, Vertex * left_most){
+        static void computeLeftSide(Vertex * right_most, Vertex * left_most){
             assert(right_most != nullptr);
             assert(left_most != nullptr);
 
@@ -269,7 +286,7 @@ namespace weight {
 
             ptr->left_component = weight_left;
         }
-    }
+    };
 }
 
 #endif // !WEIGHT_COMPUTATION_HPP
