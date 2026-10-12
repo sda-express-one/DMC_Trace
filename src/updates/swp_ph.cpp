@@ -67,7 +67,7 @@ double swp_ph_update::attempt(){
          ptr_two->right_component * 
          ptr_one->left_component
         ).trace() *
-        std::exp(-ph_energy_tot*(tau_two - tau_one)) *
+        std::exp(ph_energy_tot*(tau_two - tau_one)) *
         // band-normalised actions: only ptr_one's segment is re-based, so S' - S is the change of its shift
         std::exp(-(proposed_weights[0].action_shift - ptr_one->action_shift))
     };

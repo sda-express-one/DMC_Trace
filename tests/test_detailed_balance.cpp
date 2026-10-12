@@ -22,6 +22,8 @@
 //   chg_ph_momentum, one line at fixed times, for each of the three line kinds: pi(w) ~ T(w) |g(w)|^2,
 //     averages of |w|^2, |w| and w.p^ against 3D quadrature. Plus the returned ratio itself on general
 //     multi-line diagrams from a chain with all updates, against the diagram rebuilt from scratch.
+//   swp_ph: the returned ratio on the same kind of diagrams, against the rebuilt weights before and after
+//     the swap, separately for vertices of equal and of opposite types.
 //
 // Errors from the spread over independent chains, each started at a random point after a burn-in.
 #include <algorithm>
@@ -575,8 +577,88 @@ static void chg_w_ratio_case(test::Checks & check){
           sign_errors, negative_moves);
 }
 
+// swp_ph: the returned |ratio| on general multi-line diagrams from a chain with all updates, against the
+// weight ratio of the diagram rebuilt from scratch before and after accept(). The proposal is symmetric
+// (a uniform slot, then its successor), so the ratio is the weight ratio alone: the couplings cancel
+// (the same two lines keep their momenta), and only the electronic trace and the two lines' propagators
+// change,
+//     r = (T~'/T~) e^{-(S' - S)} e^{-sum_internal omega (l' - l)},
+// with T~ from the sanitizer's rebuild and l the internal line lengths. Swapping a creation and an
+// annihilation vertex (opposite types) shortens or lengthens both lines at once, and is checked on its
+// own: with the propagators' sign wrong it is the case that drifts the chain to ever longer lines.
+static double internal_phonon_exponent(const diagram_cfg & cfg){
+    double s {0.};
+    for (int i {0}; i < cfg.internal_ph_manager->current_length; i += 2) {
+        const Vertex * v {cfg.internal_ph_manager->selectVertex(i)};
+        s += v->ph_energy * (v->conj_vertex->tau - v->tau);
+    }
+    return s;
+}
+
+static void swp_ratio_case(test::Checks & check){
+    test::Diagram d {1717ULL, {0.11, -0.07, 0.05}, 24, 8};
+    diagram_cfg * cfg {&d.cfg};
+    add_int_ph_update addi {cfg, &d.rng};  rm_int_ph_update rmi {cfg, &d.rng};
+    add_ext_ph_update adde {cfg, &d.rng};  rm_ext_ph_update rme {cfg, &d.rng};
+    swp_ph_update swp {cfg, &d.rng};       mv_tau_update mv {cfg, &d.rng};
+    chg_tau_update ch {cfg, &d.rng};       chg_ph_momentum chw {cfg, &d.rng};
+    std::uniform_real_distribution<double> u {0., 1.};
+    std::uniform_int_distribution<int> pick {0, 7};
+
+    const char * name[2] {"same types    ", "opposite types"};
+    long checked[2] {}, sign_errors {0}, negative_moves {0}, dirty {0};
+    double worst[2] {};
+
+    for (long step {0}; step < 1000000; ++step) {
+        const int which {pick(d.rng)};
+        if (which < 7) {
+            double r {-1.};
+            switch (which) { case 0: r = addi.attempt(); break; case 1: r = rmi.attempt(); break; case 2: r = adde.attempt(); break;
+                             case 3: r = rme.attempt(); break; case 4: r = chw.attempt(); break; case 5: r = mv.attempt(); break;
+                             default: r = ch.attempt(); }
+            if (!(r > 0. && u(d.rng) < r)) { continue; }
+            switch (which) { case 0: addi.accept(); break; case 1: rmi.accept(); break; case 2: adde.accept(); break;
+                             case 3: rme.accept(); break; case 4: chw.accept(); break; case 5: mv.accept(); break;
+                             default: ch.accept(); }
+            if (!numerical::sanitizeDiagram(cfg).clean()) { ++dirty; }
+            continue;
+        }
+
+        const double T_before {cfg->diagram_head->right_component.trace()};
+        const double S_before {cfg->logWeightScale()};
+        const double P_before {internal_phonon_exponent(*cfg)};
+        const int sign_before {cfg->current_sign};
+        const double r {swp.attempt()};
+        if (!(r > 0. && u(d.rng) < r)) { continue; }
+
+        const int b {swp.ptr_one->type == swp.ptr_two->type ? 0 : 1};
+        swp.accept();
+        const int sign_tracked {cfg->current_sign};      // before the sanitizer re-derives it
+        const numerical::SanitizeReport rep {numerical::sanitizeDiagram(cfg)};
+        if (!rep.clean()) { ++dirty; }
+
+        // band-normalised traces: the full ratio is (T~'/T~) e^{-(S' - S)}, times the change of the propagators
+        const double expected {rep.trace_after / T_before * std::exp(-(cfg->logWeightScale() - S_before))
+                               * std::exp(-(internal_phonon_exponent(*cfg) - P_before))};
+        worst[b] = std::max(worst[b], std::abs(r / std::abs(expected) - 1.));
+        const int expected_sign {expected < 0. ? -1 : 1};
+        if (swp.sign.proposed_sign != expected_sign || sign_tracked != sign_before * expected_sign
+            || sign_tracked != (rep.trace_after < 0. ? -1 : 1)) { ++sign_errors; }
+        if (expected_sign < 0) { ++negative_moves; }
+        ++checked[b];
+    }
+
+    for (int b {0}; b < 2; ++b) {
+        check(checked[b] >= 100 && worst[b] < 1e-9 && dirty == 0,
+              "swp_ph ratio vs rebuilt diagram, %s: %5ld accepted moves, worst relative deviation %.1e",
+              name[b], checked[b], worst[b]);
+    }
+    check(sign_errors == 0, "swp_ph: sign of the ratio and tracked diagram sign vs rebuilt trace: %ld errors over %ld sign-flipping moves",
+          sign_errors, negative_moves);
+}
+
 int main(){
-    test::Checks check {"detailed balance of mv_tau, chg_tau, str_diagram, scl_diagram, chg_ph_momentum and chg_ph_energy"};
+    test::Checks check {"detailed balance of mv_tau, chg_tau, str_diagram, scl_diagram, chg_ph_momentum, chg_ph_energy and swp_ph"};
     test::setLK(test::AlAs);
     mv_case(check, "internal line, moderate w", false, {0.6, -0.4, 0.5});
     mv_case(check, "internal line, large w   ", false, {6.0, -4.0, 5.0});
@@ -598,5 +680,6 @@ int main(){
     chg_w_case(check, "external, ann first", Line::ext_ann_first);
     chg_w_case(check, "external, cre first", Line::ext_cre_first);
     chg_w_ratio_case(check);
+    swp_ratio_case(check);
     return check.exit_code();
 }
