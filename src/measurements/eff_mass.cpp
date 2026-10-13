@@ -32,10 +32,19 @@ eff_mass_measurement::eff_mass_measurement(diagram_cfg * cfg, std::array<double,
 }
 
 Eigen::Vector3d eff_mass_measurement::pathMomentum() const {
-    Eigen::Vector3d Y {Eigen::Vector3d::Zero()};
-    for (const Vertex * v {cfg->diagram_head}; v != cfg->diagram_tail; v = v->next) {
-        const double d {v->tau_next - v->tau};
-        Y += d * Eigen::Vector3d(v->k[0], v->k[1], v->k[2]);
+    // Every segment starts at exactly one vertex - the head or a phonon vertex (the tail starts none) - and
+    // every phonon vertex sits in exactly one slot of the two managers, so head + all slots visit each
+    // segment once. The sum does not depend on the order; reaching the vertices through the managers'
+    // contiguous slot arrays avoids the dependent pointer chase of walking head -> next -> ... .
+    const auto segment {[](const Vertex * v){
+        return Eigen::Vector3d((v->tau_next - v->tau) * Eigen::Vector3d(v->k[0], v->k[1], v->k[2]));
+    }};
+
+    Eigen::Vector3d Y {segment(cfg->diagram_head)};
+    for (const VertexPointerManager * manager : {cfg->internal_ph_manager, cfg->external_ph_manager}) {
+        for (int i {0}; i < manager->current_length; ++i) {
+            Y += segment(manager->selectVertex(i));
+        }
     }
     return Y;
 }
