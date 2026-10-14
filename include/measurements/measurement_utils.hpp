@@ -2,9 +2,12 @@
 #define MEASUREMENT_UTILS_HPP
 
 #include <array>
+#include <Eigen/Core>
+#include "diagram/diagram_config.hpp"
 
-// Helpers shared by the binned Green function estimators (green_func_measurement,
-// green_trace_measurement).
+// Helpers shared by the estimators: the binned Green function ones (green_func_measurement,
+// green_trace_measurement) and the effective-mass ones (eff_mass_measurement,
+// eff_mass_uniaxial_measurement).
 namespace measurement {
 
     // Z_0 = int_0^tau_max tr G0(p, tau) e^{mu tau} dtau = sum_n (1 - e^{-(E_n - mu) tau_max}) / (E_n - mu):
@@ -18,6 +21,13 @@ namespace measurement {
 
     // (bin + 1/2) * bin_width: the centre of the bin, in imaginary time
     long double binCentre(int bin, double bin_width);
+
+    // Y = sum over segments of k dtau, the imaginary-time integral of the electron momentum of the current
+    // diagram. Every segment starts at exactly one vertex - the head or a phonon vertex (the tail starts
+    // none) - and every phonon vertex sits in exactly one slot of the two managers, so head + all slots
+    // visit each segment once. The sum does not depend on the order; reaching the vertices through the
+    // managers' contiguous slot arrays avoids the dependent pointer chase of walking head -> next -> ... .
+    Eigen::Vector3d pathMomentum(const diagram_cfg & cfg);
 }
 
 #endif // !MEASUREMENT_UTILS_HPP

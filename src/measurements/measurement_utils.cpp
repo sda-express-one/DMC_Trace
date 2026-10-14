@@ -27,4 +27,18 @@ namespace measurement {
     long double binCentre(int bin, double bin_width){
         return (static_cast<long double>(bin) + 0.5L) * static_cast<long double>(bin_width);
     }
+
+    Eigen::Vector3d pathMomentum(const diagram_cfg & cfg){
+        const auto segment {[](const Vertex * v){
+            return Eigen::Vector3d((v->tau_next - v->tau) * Eigen::Vector3d(v->k[0], v->k[1], v->k[2]));
+        }};
+
+        Eigen::Vector3d Y {segment(cfg.diagram_head)};
+        for (const VertexPointerManager * manager : {cfg.internal_ph_manager, cfg.external_ph_manager}) {
+            for (int i {0}; i < manager->current_length; ++i) {
+                Y += segment(manager->selectVertex(i));
+            }
+        }
+        return Y;
+    }
 }
