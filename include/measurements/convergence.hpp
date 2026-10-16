@@ -38,7 +38,7 @@ namespace measurement {
     ConvergenceResult diagnose(const std::vector<std::vector<double>> & chains);
 
     // The building blocks, exposed for testing.
-    double inverseNormalCdf(double p);                                          // Phi^-1, |rel. error| < 1.2e-9
+    double inverseNormalCdf(double p);                                          // Phi^-1, Wichura AS 241, rel. error ~1e-16
     std::vector<std::vector<double>> splitChains(const std::vector<std::vector<double>> & chains);
     std::vector<std::vector<double>> rankNormalize(const std::vector<std::vector<double>> & chains);
     double splitRhat(const std::vector<std::vector<double>> & split);           // Eqs. 1-4 on already-split chains

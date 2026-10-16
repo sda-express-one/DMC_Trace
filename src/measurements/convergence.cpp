@@ -3,7 +3,6 @@
 #include <cassert>
 #include <cmath>
 #include <limits>
-#include <numbers>
 #include <numeric>
 #include <utility>
 
@@ -57,34 +56,42 @@ namespace measurement {
     }
 
     double inverseNormalCdf(double p){
-        // P. J. Acklam's rational approximation with one Halley refinement step
+        // M. J. Wichura, Algorithm AS 241 (PPND16), Applied Statistics 37, 477 (1988): piecewise rational
+        // approximations, relative error ~1e-16 over the whole double range (the algorithm of R's qnorm). Central
+        // region |p - 1/2| <= 0.425 in r = 0.180625 - q^2; tails in r = sqrt(-ln(min(p, 1 - p))), split at r = 5,
+        // the upper tail by symmetry (1 - p is exact for p > 1/2).
         assert(p > 0. && p < 1.);
-        static constexpr double a[6] {-3.969683028665376e+01,  2.209460984245205e+02, -2.759285104469687e+02,
-                                       1.383577518672690e+02, -3.066479806614716e+01,  2.506628277459239e+00};
-        static constexpr double b[5] {-5.447609879822406e+01,  1.615858368580409e+02, -1.556989798598866e+02,
-                                       6.680131188771972e+01, -1.328068155288572e+01};
-        static constexpr double c[6] {-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
-                                      -2.549732539343734e+00,  4.374664141464968e+00,  2.938163982698783e+00};
-        static constexpr double d[4] { 7.784695709041462e-03,  3.224671290700398e-01,  2.445134137142996e+00,
-                                       3.754408661907416e+00};
-        constexpr double p_low {0.02425};
-        double x {0.};
-        if (p < p_low) {
-            const double q {std::sqrt(-2. * std::log(p))};
-            x = (((((c[0]*q + c[1])*q + c[2])*q + c[3])*q + c[4])*q + c[5]) / ((((d[0]*q + d[1])*q + d[2])*q + d[3])*q + 1.);
+        const double q {p - 0.5};
+        if (std::abs(q) <= 0.425) {
+            const double r {0.180625 - q * q};
+            return q * (((((((r * 2509.0809287301226727 + 33430.575583588128105) * r + 67265.770927008700853) * r
+                             + 45921.953931549871457) * r + 13731.693765509461125) * r + 1971.5909503065514427) * r
+                             + 133.14166789178437745) * r + 3.387132872796366608)
+                     / (((((((r * 5226.495278852545925 + 28729.085735721942674) * r + 39307.89580009271061) * r
+                             + 21213.794301586595867) * r + 5394.1960214247511077) * r + 687.1870074920579083) * r
+                             + 42.313330701600911252) * r + 1.);
         }
-        else if (p <= 1. - p_low) {
-            const double q {p - 0.5}, r {q * q};
-            x = (((((a[0]*r + a[1])*r + a[2])*r + a[3])*r + a[4])*r + a[5])*q / (((((b[0]*r + b[1])*r + b[2])*r + b[3])*r + b[4])*r + 1.);
+        double r {std::sqrt(-std::log(q < 0. ? p : 1. - p))};
+        double x {0.};
+        if (r <= 5.) {
+            r -= 1.6;
+            x = (((((((r * 7.7454501427834140764e-4 + .0227238449892691845833) * r + .24178072517745061177) * r
+                      + 1.27045825245236838258) * r + 3.64784832476320460504) * r + 5.7694972214606914055) * r
+                      + 4.6303378461565452959) * r + 1.42343711074968357734)
+              / (((((((r * 1.05075007164441684324e-9 + 5.475938084995344946e-4) * r + .0151986665636164571966) * r
+                      + .14810397642748007459) * r + .68976733498510000455) * r + 1.6763848301838038494) * r
+                      + 2.05319162663775882187) * r + 1.);
         }
         else {
-            const double q {std::sqrt(-2. * std::log(1. - p))};
-            x = -(((((c[0]*q + c[1])*q + c[2])*q + c[3])*q + c[4])*q + c[5]) / ((((d[0]*q + d[1])*q + d[2])*q + d[3])*q + 1.);
+            r -= 5.;
+            x = (((((((r * 2.01033439929228813265e-7 + 2.71155556874348757815e-5) * r + .0012426609473880784386) * r
+                      + .026532189526576123093) * r + .29656057182850489123) * r + 1.7848265399172913358) * r
+                      + 5.4637849111641143699) * r + 6.6579046435011037772)
+              / (((((((r * 2.04426310338993978564e-15 + 1.4215117583164458887e-7) * r + 1.8463183175100546818e-5) * r
+                      + 7.868691311456132591e-4) * r + .0148753612908506148525) * r + .13692988092273580531) * r
+                      + .59983220655588793769) * r + 1.);
         }
-        // Halley step on Phi(x) - p
-        const double e {0.5 * std::erfc(-x / std::sqrt(2.)) - p};
-        const double u {e * std::sqrt(2. * std::numbers::pi) * std::exp(x * x / 2.)};
-        return x - u / (1. + x * u / 2.);
+        return q < 0. ? -x : x;
     }
 
     std::vector<std::vector<double>> splitChains(const std::vector<std::vector<double>> & chains){

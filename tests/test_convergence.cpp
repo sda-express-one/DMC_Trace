@@ -8,6 +8,7 @@
 //   - a linear trend shared by all chains: missed without splitting, caught by split-R-hat;
 //   - Cauchy chains (infinite variance): equal ones pass, one shifted chain is caught;
 //   - invariance under a monotone transformation (exp); constant chains; too short chains.
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -42,11 +43,27 @@ static Chains cauchy_chains(unsigned long long seed, int M, int N){
 int main(){
     test::Checks check {"convergence diagnostics (rank-normalised split-R-hat, folding, ESS)"};
 
-    const double q1 {measurement::inverseNormalCdf(0.5)}, q2 {measurement::inverseNormalCdf(0.975)};
-    const double q3 {measurement::inverseNormalCdf(1e-6)}, q4 {measurement::inverseNormalCdf(1. - 1e-6)};
-    check(std::abs(q1) < 1e-12 && std::abs(q2 - 1.959963984540054) < 1e-12 && std::abs(q3 + 4.753424308822899) < 1e-9
-          && std::abs(q4 - 4.753424308822899) < 1e-9,
-          "Phi^-1: %.15f %.15f %.12f %.12f", q1, q2, q3, q4);
+    // Phi^-1 against reference values (Newton on Phi(x) = p in 80-bit long double with erfcl), to full double
+    // precision; the upper tail close to 1 is where a refinement step on Phi(x) - p loses its digits to cancellation
+    struct Ref { double p, x; };
+    const Ref refs[] {{0.5, 0.}, {0.975, 1.959963984540053856}, {0.025, -1.959963984540054212}, {0.3, -0.524400512708040816},
+                      {1e-6, -4.753424308822898957}, {1. - 1e-6, 4.753424308817087766}, {1. - 1e-10, 6.361340889697421864},
+                      {1e-20, -9.262340089798407579}, {1e-300, -37.047096299361199235}};
+    double worst_ref {0.};
+    for (const Ref & r : refs) {
+        const double x {measurement::inverseNormalCdf(r.p)};
+        worst_ref = std::max(worst_ref, std::abs(x - r.x) / std::max(1., std::abs(r.x)));
+    }
+    double worst_sym {0.};
+    for (const double p : {1e-12, 1e-4, 0.01, 0.1, 0.25, 0.4}) {
+        // u = 1 - p rounds, but t = 1 - u is exact (u >= 1/2): t and u sum to exactly 1, so Phi^-1(t) = -Phi^-1(u)
+        const double u {1. - p}, t {1. - u};
+        const double xt {measurement::inverseNormalCdf(t)};
+        worst_sym = std::max(worst_sym, std::abs(xt + measurement::inverseNormalCdf(u)) / std::max(1., std::abs(xt)));
+    }
+    check(worst_ref < 1e-14 && worst_sym < 1e-14,
+          "Phi^-1 (Wichura AS 241): worst relative deviation from the reference %.1e over p = 1e-300 .. 1 - 1e-10; "
+          "Phi^-1(p) + Phi^-1(1 - p) = %.1e", worst_ref, worst_sym);
 
     const int M {4}, N {1000};
     const double S {M * N};
