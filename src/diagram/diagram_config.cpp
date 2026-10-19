@@ -18,7 +18,7 @@ diagram_cfg::diagram_cfg(
         tau_max(tau_max),
         chem_pot(chem_pot)
 {
-    assert(this->chem_pot < 0);
+    assert(this->chem_pot <= 0);      // 0 only for fixed-length runs (e^{mu tau_D} constant), < 0 otherwise
     assert(internal_ph_manager != nullptr);
     assert(external_ph_manager != nullptr);
     assert(phonon_mode_manager != nullptr);
