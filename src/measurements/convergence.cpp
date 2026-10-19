@@ -166,33 +166,36 @@ namespace measurement {
         }
         if (var_plus == 0.) { return S; }       // constant everywhere: fully determined
 
+        // lag t of the combined autocorrelation; t is the even lag of the current pair (t, t + 1), as in posterior's ess_rfun
+        const auto rho_at {[&](std::size_t lag){ return 1. - (mean_var - mean_acov(lag)) / var_plus; }};
         std::vector<double> rho(n, 0.);
-        rho[0] = 1.;
-        double rho_even {1.}, rho_odd {1. - (mean_var - mean_acov(1)) / var_plus};
+        double rho_even {1.}, rho_odd {rho_at(1)};
+        rho[0] = rho_even;
         rho[1] = rho_odd;
-        std::size_t t {1};
-        while (t + 2 < n - 4 && rho_even + rho_odd > 0.) {
-            rho_even = 1. - (mean_var - mean_acov(t + 1)) / var_plus;
-            rho_odd = 1. - (mean_var - mean_acov(t + 2)) / var_plus;
-            if (rho_even + rho_odd >= 0.) {
-                rho[t + 1] = rho_even;
-                rho[t + 2] = rho_odd;
-            }
+        std::size_t t {0};
+        while (t + 5 < n && rho_even + rho_odd > 0.) {      // a NaN pair sum also stops the sequence
             t += 2;
+            rho_even = rho_at(t);
+            rho_odd = rho_at(t + 1);
+            if (rho_even + rho_odd >= 0.) {
+                rho[t] = rho_even;
+                rho[t + 1] = rho_odd;
+            }
         }
         const std::size_t max_t {t};
-        if (rho_even > 0. && max_t + 1 < n) { rho[max_t + 1] = rho_even; }     // antithetic chains: improves the estimate
+        if (rho_even > 0.) { rho[max_t] = rho_even; }      // antithetic chains: improves the estimate
 
-        // initial monotone sequence
-        for (std::size_t u {1}; u + 2 <= max_t; u += 2) {
-            if (rho[u + 1] + rho[u + 2] > rho[u - 1] + rho[u]) {
-                rho[u + 1] = 0.5 * (rho[u - 1] + rho[u]);
-                rho[u + 2] = rho[u + 1];
+        // initial monotone sequence: pairs (u, u + 1) up to (max_t - 2, max_t - 1)
+        for (std::size_t u {2}; u + 2 <= max_t; u += 2) {
+            if (rho[u] + rho[u + 1] > rho[u - 2] + rho[u - 1]) {
+                rho[u] = 0.5 * (rho[u - 2] + rho[u - 1]);
+                rho[u + 1] = rho[u];
             }
         }
+        // Geyer's truncated estimate: lags 0 .. max_t - 1 doubled, lag max_t once
         double tau {-1.};
-        for (std::size_t u {0}; u <= max_t; ++u) { tau += 2. * rho[u]; }
-        if (max_t + 1 < n) { tau += rho[max_t + 1]; }
+        for (std::size_t u {0}; u < max_t; ++u) { tau += 2. * rho[u]; }
+        tau += rho[max_t];
         tau = std::max(tau, 1. / std::log10(S));
         return S / tau;
     }
