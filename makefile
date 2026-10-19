@@ -3,7 +3,8 @@ BUILD ?= release
 
 CXX = mpic++
 # project headers are included relative to include/ (e.g. "diagram/vertex.hpp") from every directory
-CXXFLAGS = --std=c++23 -Wall -Wextra -Werror -Wpedantic -I$(INCLUDE_DIR) -DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX
+# -MMD -MP: each object gets a .d file listing the headers it includes, so a header change rebuilds its users
+CXXFLAGS = --std=c++23 -Wall -Wextra -Werror -Wpedantic -MMD -MP -I$(INCLUDE_DIR) -DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX
 LDFLAGS = -L/home/samuele/.local/lib -Wl,-rpath=/home/samuele/.local/lib -Wl,--start-group -lsimplemc-mpi -lsimplemc-numeric -lsimplemc-serialize-json -lsimplemc-utils -Wl,--end-group -L/usr/local/lib -lfmt
 
 # directories
@@ -48,6 +49,9 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
 	mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+# header dependencies written by -MMD (absent before the first build)
+-include $(OBJECTS:.o=.d)
+
 # order-only prerequisites above need actual rules to create these directories - mkdir -p in
 # the compile recipe above also handles per-file subdirectories (e.g. build/release/diagram/),
 # but $(BUILD_DIR)/$(BIN_DIR) themselves still need to exist first for that mkdir invocation.
@@ -62,7 +66,7 @@ release:
 	$(MAKE) BUILD=release
 
 clean:
-	rm -f $(OBJECTS)
+	rm -f $(OBJECTS) $(OBJECTS:.o=.d)
 
 cleanall:
 	rm -rf build/ $(BIN_DIR)
