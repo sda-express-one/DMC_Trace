@@ -4,6 +4,7 @@
 //   - validate rejects every inconsistent setting it is meant to catch;
 //   - applyGlobals sets LKMatrix and Coupling::Parameters;
 //   - makeUpdateSet links the add/rm pairs with the detailed-balance factor w_inverse/w;
+//   - the repository's inputs/*.json load and validate, and inputs/default.json matches the current defaults;
 //   - a simplemc::metropolis_kernel run with unequal pair weights samples the same distribution as with equal
 //     weights (<n_int>, <n_ext> at alpha = 0.5, fixed tau_D, mu = 0).
 #include <cmath>
@@ -22,6 +23,11 @@
 #include "diagram/diagram_builder.hpp"
 
 namespace fs = std::filesystem;
+
+// set by tests/makefile; the fallback (the repository seen from tests/, where make -C tests runs) keeps editors happy
+#ifndef DMC_ROOT
+#define DMC_ROOT ".."
+#endif
 
 static nlohmann::json document(const simplemc::simulation_params & params, const run_input & in){
     const fs::path tmp {fs::temp_directory_path() / "dmc_test_run_input_doc.json"};
@@ -232,6 +238,30 @@ int main(){
               "metropolis_kernel, alpha = 0.5, tau_D = 10: <n_int> %.4f +- %.4f (equal weights) vs %.4f +- %.4f (add_int x3) [%.1f sigma]; "
               "<n_ext> %.4f +- %.4f vs %.4f +- %.4f (rm_ext x2.5) [%.1f sigma]",
               a.n_int, a.e_int, b.n_int, b.e_int, zi, a.n_ext, a.e_ext, b.n_ext, b.e_ext, ze);
+    }
+
+    // 7. the repository's input files (inputs/**/*.json): every one loads and validates (no stale or unknown key),
+    //    and inputs/default.json is exactly what writeDefault produces now (no key missing, no default changed)
+    {
+        const fs::path inputs {fs::path(DMC_ROOT) / "inputs"};
+        int files {0};
+        std::vector<std::string> failed;
+        if (fs::is_directory(inputs)) {
+            for (const auto & e : fs::recursive_directory_iterator(inputs)) {
+                if (!e.is_regular_file() || e.path().extension() != ".json") { continue; }
+                ++files;
+                try { run_input x; simplemc::simulation_params p; input::load(e.path(), p, x); }
+                catch (const std::exception & ex) { failed.push_back(e.path().filename().string() + ": " + ex.what()); }
+            }
+        }
+        for (const auto & f : failed) { std::printf("    %s\n", f.c_str()); }
+        nlohmann::json def;
+        const fs::path def_path {inputs / "default.json"};
+        if (fs::exists(def_path)) { std::ifstream(def_path) >> def; }
+        const bool current {def == document(simplemc::simulation_params {}, run_input {})};
+        check(files > 0 && failed.empty() && current,
+              "inputs/: %d file(s) load and validate (%zu failed); default.json %s (regenerate with bin/diagramc inputs/default.json)",
+              files, failed.size(), current ? "matches the current defaults" : "is OUT OF DATE or missing");
     }
     return check.exit_code();
 }
