@@ -127,7 +127,10 @@ in a row, or at `max_steps`. In the second case production runs anyway, and `<pr
 | `prefix` | "dmc" | path stem of the output files, relative to the working directory; a missing directory is created |
 
 The outputs are:
-- `<prefix>_<estimator>.dat` for every active estimator;
+- `<prefix>_<estimator>.dat` for every active estimator, from all chains combined;
+- `<prefix>_<estimator>_chains.dat` for gs_energy, eff_mass and eff_mass_uniaxial: each chain's (rank's) own value
+  and jackknife error, with the mean over the chains and the χ²/dof of the chains around their weighted mean. A
+  χ²/dof ≫ 1 flags a chain that disagrees with the others, e.g. a stuck or unthermalized one;
 - `<prefix>_thermalization.dat`, the R̂ history;
 - `<prefix>_run.dat`, with the input, the run statistics, the negative-sign fraction and the update acceptances;
 - `<prefix>_input.json`, the full input actually used.

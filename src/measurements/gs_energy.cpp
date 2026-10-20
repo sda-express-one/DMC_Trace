@@ -5,7 +5,11 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <exception>
+#include <limits>
 #include <stdexcept>
+#include <string>
+#include <vector>
 #include "diagram/vertex.hpp"
 
 gs_energy_measurement::gs_energy_measurement(diagram_cfg * cfg, std::array<double, 3> p, double tau_min, bool tau_fixed,
@@ -64,6 +68,7 @@ void gs_energy_measurement::measure(){
     const Eigen::Vector2d sample {s * estimate(), s};
     acc.accumulate(sample);
     ++n_measured;
+    if (s < 0.) { ++n_negative; }
 }
 
 gs_energy_measurement::result gs_energy_measurement::normalised() const {
@@ -79,8 +84,9 @@ void gs_energy_measurement::write(const std::string & path) const {
     std::fprintf(f, "# ground-state energy, tau-scaling estimator\n");
     std::fprintf(f, "# p = %.10f %.10f %.10f   %s", p[0], p[1], p[2], tau_fixed ? "tau_fixed\n" : "");
     if (!tau_fixed) { std::fprintf(f, "tau_min = %.10f\n", tau_min); }
-    std::fprintf(f, "# n_samples = %llu   n_measured = %llu   batches = %zu x %llu samples\n",
+    std::fprintf(f, "# n_samples = %llu   n_measured = %llu   n_negative = %llu   batches = %zu x %llu samples\n",
                  static_cast<unsigned long long>(acc.count()), static_cast<unsigned long long>(n_measured),
+                 static_cast<unsigned long long>(n_negative),
                  acc.batches().size(), static_cast<unsigned long long>(acc.batch_count()));
     std::fprintf(f, "# columns: E err\n");
     std::fprintf(f, "%.15Le %.6Le\n", r.energy, r.energy_error);
@@ -90,4 +96,19 @@ void gs_energy_measurement::write(const std::string & path) const {
 void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, gs_energy_measurement & m){
     simplemc_mpi_collect(comm, m.acc);
     simplemc::mpi::all_reduce_in_place(m.n_measured, MPI_SUM, comm);
+    simplemc::mpi::all_reduce_in_place(m.n_negative, MPI_SUM, comm);
+}
+
+std::vector<std::string> gs_energy_measurement::summaryNames(){
+    return {"E"};
+}
+
+std::vector<double> gs_energy_measurement::summary() const {
+    try {
+        const result r {normalised()};
+        return {static_cast<double>(r.energy), static_cast<double>(r.energy_error)};
+    }
+    catch (const std::exception &) {      // fewer than 2 full batches on this rank
+        return std::vector<double>(2, std::numeric_limits<double>::quiet_NaN());
+    }
 }

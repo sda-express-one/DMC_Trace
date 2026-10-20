@@ -4,6 +4,7 @@
 // chains are thermalized under R-hat control (the ranks are the chains: measurements/thermalization_control.hpp),
 // then the production run measures the active estimators, the ranks are combined and the root writes
 //     <prefix>_<estimator>.dat   one per active estimator (its write())
+//     <prefix>_<estimator>_chains.dat  gs_energy, eff_mass, eff_mass_uniaxial: every chain's own value and error
 //     <prefix>_thermalization.dat  the R-hat checkpoints
 //     <prefix>_run.dat           input, run parameters, update statistics, sign, thermalization outcome
 //     <prefix>_input.json        the input actually used (every key, defaults filled in)
@@ -116,6 +117,66 @@ namespace {
     }
 
     std::string outPath(const run_input & in, const std::string & what){ return in.output.prefix + "_" + what; }
+
+    // Per-chain results (collective, before the ranks are merged): every rank's own summary() - value and jackknife
+    // error of each quantity in M::summaryNames() - and its sample counters are gathered on the root, which writes
+    // <prefix>_<name>_chains.dat: one line per rank, preceded by the mean over the chains with its standard error
+    // and the chi^2/dof of the chains around their error-weighted mean (~1 if they agree, >> 1 for a stuck chain).
+    template <typename M>
+    void writeChains(const simplemc::mpi::communicator & comm, const M & m, const std::string & name, const run_input & in){
+        std::vector<double> mine {m.summary()};
+        mine.push_back(static_cast<double>(m.n_measured));
+        mine.push_back(static_cast<double>(m.n_negative));
+        const int n {static_cast<int>(mine.size())};
+        const bool root {comm.rank() == 0};
+        std::vector<double> all(root ? static_cast<std::size_t>(n * comm.size()) : 0);
+        MPI_Gather(mine.data(), n, MPI_DOUBLE, root ? all.data() : nullptr, n, MPI_DOUBLE, 0, comm);
+        if (!root) { return; }
+
+        const std::vector<std::string> names {M::summaryNames()};
+        const auto R {static_cast<std::size_t>(comm.size())};
+        const auto row {[&](std::size_t r){ return all.data() + r * static_cast<std::size_t>(n); }};
+        const std::string path {outPath(in, name + "_chains.dat")};
+        std::FILE * f {std::fopen(path.c_str(), "w")};
+        if (f == nullptr) { throw std::runtime_error("cannot open " + path); }
+        std::fprintf(f, "# %s, per chain (one chain per MPI rank; each with its own delete-one-batch jackknife)\n", name.c_str());
+        std::fprintf(f, "# p = %.10f %.10f %.10f   tau_fixed = %d   chains = %zu\n", in.diagram.p[0], in.diagram.p[1],
+                     in.diagram.p[2], in.diagram.tau_fixed ? 1 : 0, R);
+        for (std::size_t q {0}; q < names.size(); ++q) {
+            // chains with a finite value and a positive error only
+            double s {0.}, s2 {0.}, sw {0.}, swv {0.};
+            std::size_t k {0};
+            for (std::size_t r {0}; r < R; ++r) {
+                const double v {row(r)[2*q]}, e {row(r)[2*q + 1]};
+                if (!std::isfinite(v) || !std::isfinite(e) || e <= 0.) { continue; }
+                s += v; s2 += v * v; sw += 1. / (e * e); swv += v / (e * e); ++k;
+            }
+            if (k < 2) {
+                std::fprintf(f, "# %s: fewer than 2 chains with a result\n", names[q].c_str());
+                continue;
+            }
+            const double kk {static_cast<double>(k)};
+            const double mean {s / kk};
+            const double sem {std::sqrt(std::max(s2 / kk - mean * mean, 0.) * kk / (kk - 1.) / kk)};
+            const double wmean {swv / sw};
+            double chi2 {0.};
+            for (std::size_t r {0}; r < R; ++r) {
+                const double v {row(r)[2*q]}, e {row(r)[2*q + 1]};
+                if (std::isfinite(v) && std::isfinite(e) && e > 0.) { chi2 += (v - wmean) * (v - wmean) / (e * e); }
+            }
+            std::fprintf(f, "# %s: mean over %zu chains = %.10e +- %.3e (spread / sqrt(chains))   weighted mean = %.10e   "
+                            "chi2/dof = %.3f\n", names[q].c_str(), k, mean, sem, wmean, chi2 / (kk - 1.));
+        }
+        std::fprintf(f, "# columns: rank");
+        for (const auto & nm : names) { std::fprintf(f, " %s err", nm.c_str()); }
+        std::fprintf(f, " n_measured n_negative\n");
+        for (std::size_t r {0}; r < R; ++r) {
+            std::fprintf(f, "%zu", r);
+            for (std::size_t q {0}; q < names.size(); ++q) { std::fprintf(f, " %.10e %.3e", row(r)[2*q], row(r)[2*q + 1]); }
+            std::fprintf(f, " %.0f %.0f\n", row(r)[2*names.size()], row(r)[2*names.size() + 1]);
+        }
+        std::fclose(f);
+    }
 
     int run(int argc, char ** argv, const simplemc::mpi::communicator & comm){
         const double t0 {MPI_Wtime()};      // start of the job: params.max_time is the budget of the whole job
@@ -233,6 +294,18 @@ namespace {
         simplemc::mpi::all_reduce_in_place(n_negative, MPI_SUM, comm);
         simplemc_mpi_collect(comm, us);
         simplemc_mpi_collect(comm, stats);
+        // per-chain files first: the collect below merges the ranks' batches in place
+        if (produce) {
+            if (in.measurements_active.at("gs_energy")) {
+                writeChains(comm, *ms.get<gs_energy_measurement>("gs_energy"), "gs_energy", in);
+            }
+            if (in.measurements_active.at("eff_mass")) {
+                writeChains(comm, *ms.get<eff_mass_measurement>("eff_mass"), "eff_mass", in);
+            }
+            if (in.measurements_active.at("eff_mass_uniaxial")) {
+                writeChains(comm, *ms.get<eff_mass_uniaxial_measurement>("eff_mass_uniaxial"), "eff_mass_uniaxial", in);
+            }
+        }
         int failed {0};
         ms.for_each([&](auto & m){
             if (!produce || !m.is_active()) { return; }

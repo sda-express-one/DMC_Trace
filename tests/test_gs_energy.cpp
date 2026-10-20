@@ -9,9 +9,12 @@
 //    tau_D >= tau_min is exactly
 //        int sum_n E_n e^{-(E_n - mu) tau} / int sum_n e^{-(E_n - mu) tau},   tau in [tau_min, tau_max],
 //    which the jackknifed estimate must reproduce within its errors.
+// 3. summary() of gs_energy, eff_mass and eff_mass_uniaxial (the per-chain results of diagramc): NaNs before 2 full
+//    batches, then exactly the values and errors of normalised().
 #include <cmath>
 #include <cstdio>
 #include <random>
+#include <vector>
 #include "test_common.hpp"
 #include "updates/add_internal_ph.hpp"
 #include "updates/rm_internal_ph.hpp"
@@ -22,6 +25,8 @@
 #include "updates/chg_tau.hpp"
 #include "updates/chg_ph_momentum.hpp"
 #include "measurements/gs_energy.hpp"
+#include "measurements/eff_mass.hpp"
+#include "measurements/eff_mass_uniaxial.hpp"
 
 // ln |W(lambda)| up to lambda-independent factors (couplings), with all times scaled by lambda
 static double log_weight_scaled(const diagram_cfg & cfg, double lambda){
@@ -126,8 +131,47 @@ static void order0(test::Checks & check){
           tau_min, num/den, CHAINS, chi2 / CHAINS, worst_pull, mu, tau_max);
 }
 
+// summary() - this rank's result for the per-chain file of diagramc - for gs_energy and both eff_mass estimators: NaNs
+// before 2 full batches, then exactly the values and errors of normalised(). A chain of add/rm internal lines and
+// mv_tau at alpha = 0.5, A = B = 1, fixed tau_D = 10.
+static void summaries(test::Checks & check){
+    test::setLK({1., 1., 0.});
+    test::Diagram d(4242, {0., 0., 0.}, 200, 8, 10., -1., 1., 1.);
+    add_int_ph_update addi {&d.cfg, &d.rng};
+    rm_int_ph_update rmi {&d.cfg, &d.rng};
+    mv_tau_update mv {&d.cfg, &d.rng};
+    std::uniform_real_distribution<double> u {0., 1.};
+    std::uniform_int_distribution<int> pick {0, 2};
+    gs_energy_measurement E {&d.cfg, {0., 0., 0.}, 0., true, 16};
+    eff_mass_measurement M {&d.cfg, {0., 0., 0.}, 0., true, 16};
+    eff_mass_uniaxial_measurement U {&d.cfg, {0., 0., 0.}, 0., true, 16};
+
+    bool nan_before {true};
+    for (const auto & v : {E.summary(), M.summary(), U.summary()}) { for (const double x : v) { nan_before = nan_before && std::isnan(x); } }
+
+    for (int i {0}; i < 200000; ++i) {
+        const int w {pick(d.rng)};
+        const double r {w == 0 ? addi.attempt() : w == 1 ? rmi.attempt() : mv.attempt()};
+        if (r > 0. && u(d.rng) < r) { if (w == 0) { addi.accept(); } else if (w == 1) { rmi.accept(); } else { mv.accept(); } }
+        if (i % 10 == 0) { E.measure(); M.measure(); U.measure(); }
+    }
+    const auto e {E.normalised()};
+    const auto m {M.normalised()};
+    const auto uu {U.normalised()};
+    const std::vector<double> se {E.summary()}, sm {M.summary()}, su {U.summary()};
+    const bool same {se == std::vector<double>{static_cast<double>(e.energy), static_cast<double>(e.energy_error)}
+                     && sm == std::vector<double>{static_cast<double>(m.mass_ratio), static_cast<double>(m.mass_ratio_error),
+                                                  static_cast<double>(m.inv_mass_iso), static_cast<double>(m.inv_mass_iso_error)}
+                     && su.size() == 8 && su[0] == static_cast<double>(uu.mass_ratio_par) && su[7] == static_cast<double>(uu.inv_mass_perp_error)
+                     && E.summaryNames().size() * 2 == se.size() && M.summaryNames().size() * 2 == sm.size()
+                     && U.summaryNames().size() * 2 == su.size()};
+    check(nan_before && same, "summary(): NaN before 2 batches; then normalised()'s values (E = %.4f +- %.4f, m*/m = %.4f +- %.4f)",
+          se[0], se[1], sm[0], sm[1]);
+}
+
 int main(){
     test::Checks check {"gs_energy_measurement (tau-scaling estimator)"};
+    summaries(check);
     test::setLK(test::AlAs);
     per_sample(check);
     order0(check);

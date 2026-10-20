@@ -6,7 +6,11 @@
 #include <cassert>
 #include <cmath>
 #include <cstdio>
+#include <exception>
+#include <limits>
 #include <stdexcept>
+#include <string>
+#include <vector>
 #include "comp_method/weight_computation.hpp"
 #include "measurements/measurement_utils.hpp"
 
@@ -188,4 +192,21 @@ void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, eff_mass_uni
     simplemc_mpi_collect(comm, m.acc);
     simplemc::mpi::all_reduce_in_place(m.n_measured, MPI_SUM, comm);
     simplemc::mpi::all_reduce_in_place(m.n_negative, MPI_SUM, comm);
+}
+
+std::vector<std::string> eff_mass_uniaxial_measurement::summaryNames(){
+    return {"mass_ratio_par", "mass_ratio_perp", "inv_mass_par", "inv_mass_perp"};
+}
+
+std::vector<double> eff_mass_uniaxial_measurement::summary() const {
+    try {
+        const result r {normalised()};
+        return {static_cast<double>(r.mass_ratio_par), static_cast<double>(r.mass_ratio_par_error),
+                static_cast<double>(r.mass_ratio_perp), static_cast<double>(r.mass_ratio_perp_error),
+                static_cast<double>(r.inv_mass_par), static_cast<double>(r.inv_mass_par_error),
+                static_cast<double>(r.inv_mass_perp), static_cast<double>(r.inv_mass_perp_error)};
+    }
+    catch (const std::exception &) {      // fewer than 2 full batches on this rank
+        return std::vector<double>(8, std::numeric_limits<double>::quiet_NaN());
+    }
 }

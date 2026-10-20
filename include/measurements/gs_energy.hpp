@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 #include <Eigen/Core>
 #include <simplemc/accs/batch_acc.hpp>
 #include <simplemc/accs/jackknife.hpp>
@@ -30,8 +31,8 @@
 //
 // Statistics: each measured sample is the vector [s X, s] in a simplemc batch accumulator; the energy
 // is the delete-one-batch jackknife of the ratio of the two means (at least 2 full batches needed).
-// Several ranks: collect the accumulator with simplemc_mpi_collect(comm, acc), and sum n_measured,
-// before calling normalised()/write().
+// Several ranks: collect the accumulator with simplemc_mpi_collect(comm, acc), and sum n_measured and
+// n_negative, before calling normalised()/write().
 struct gs_energy_measurement {
     using acc_type = simplemc::batch_acc_dynamic<double>;
 
@@ -42,6 +43,7 @@ struct gs_energy_measurement {
 
     acc_type acc;                       // one sample [s X, s] per measured configuration
     std::uint64_t n_measured {0};       // configurations accumulated (tau_D >= tau_min)
+    std::uint64_t n_negative {0};       // ... of which with sign -1
 
     struct result {
         long double energy {0.L};
@@ -67,6 +69,11 @@ struct gs_energy_measurement {
     }
 
     result normalised() const;
+
+    // This rank's own result (before simplemc_mpi_collect merges the ranks), for the per-chain file: value and
+    // jackknife error of each quantity in summaryNames(), in that order; NaNs with fewer than 2 full batches.
+    static std::vector<std::string> summaryNames();
+    std::vector<double> summary() const;
 
     // '#' metadata lines, then one line: E err
     void write(const std::string & path) const;

@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 #include <Eigen/Core>
 #include <simplemc/accs/batch_acc.hpp>
 #include <simplemc/accs/jackknife.hpp>
@@ -108,6 +109,11 @@ struct eff_mass_uniaxial_measurement {
 
     // means (the estimator applied to the full-run means) and jackknife errors
     result normalised() const;
+
+    // This rank's own result (before simplemc_mpi_collect merges the ranks), for the per-chain file: value and
+    // jackknife error of each quantity in summaryNames(), in that order; NaNs with fewer than 2 full batches.
+    static std::vector<std::string> summaryNames();
+    std::vector<double> summary() const;
 
     // '#' metadata lines with the orbital fractions, per-orbital tensors, velocities and C, then one line with
     // the pooled masses
