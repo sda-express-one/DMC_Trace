@@ -48,3 +48,6 @@ markdown_notes
 
 # runs directory
 runs
+
+# machine-specific build paths (see config.mk)
+config.local.mk

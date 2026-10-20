@@ -1,11 +1,14 @@
 # default to release mode
 BUILD ?= release
 
-CXX = mpic++
+# machine-specific paths (simplemc, Eigen, nlohmann/json, fmt) and the compiler: config.mk, overridable in
+# config.local.mk or on the command line
+include config.mk
+
 # project headers are included relative to include/ (e.g. "diagram/vertex.hpp") from every directory
 # -MMD -MP: each object gets a .d file listing the headers it includes, so a header change rebuilds its users
-CXXFLAGS = --std=c++23 -Wall -Wextra -Werror -Wpedantic -MMD -MP -I$(INCLUDE_DIR) -DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX
-LDFLAGS = -L/home/samuele/.local/lib -Wl,-rpath=/home/samuele/.local/lib -Wl,--start-group -lsimplemc-mpi -lsimplemc-numeric -lsimplemc-serialize-json -lsimplemc-utils -Wl,--end-group -L/usr/local/lib -lfmt
+CXXFLAGS = --std=c++23 -Wall -Wextra -Werror -Wpedantic -MMD -MP -I$(INCLUDE_DIR) $(EXTERNAL_INCLUDES) -DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX
+LDFLAGS = $(EXTERNAL_LIBS)
 
 # directories
 SRC_DIR = src

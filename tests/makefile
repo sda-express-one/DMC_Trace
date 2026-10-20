@@ -6,15 +6,15 @@
 # The project sources are compiled separately into build/tests/obj (with header dependency tracking),
 # never reusing the main build's objects, and asserts stay enabled: the invariants they guard are part
 # of what is being tested. Project headers are included relative to include/, as in the main build;
-# include paths for Eigen and simplemc come from CPLUS_INCLUDE_PATH.
+# the external paths (simplemc, Eigen, nlohmann/json, fmt) and the compiler come from ../config.mk.
 
 ROOT = ..
+include $(ROOT)/config.mk
 
-CXX = mpic++
 # DMC_ROOT: absolute path of the repository, for tests that read files from it (test_run_input: inputs/)
-CXXFLAGS = --std=c++23 -O2 -g -Wall -Wextra -Werror -Wpedantic -MMD -MP -I$(ROOT)/include -DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX \
+CXXFLAGS = --std=c++23 -O2 -g -Wall -Wextra -Werror -Wpedantic -MMD -MP -I$(ROOT)/include $(EXTERNAL_INCLUDES) -DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX \
            -DDMC_ROOT=\"$(abspath $(ROOT))\"
-LDFLAGS = -L/home/samuele/.local/lib -Wl,-rpath=/home/samuele/.local/lib -Wl,--start-group -lsimplemc-mpi -lsimplemc-numeric -lsimplemc-serialize-json -lsimplemc-utils -Wl,--end-group -L/usr/local/lib -lfmt
+LDFLAGS = $(EXTERNAL_LIBS)
 
 BUILD_DIR = $(ROOT)/build/tests
 
