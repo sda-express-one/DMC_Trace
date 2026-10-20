@@ -1,4 +1,7 @@
 #include "measurements/green_func.hpp"
+#include <mpi.h>
+#include <simplemc/mpi/all_reduce.hpp>
+#include <simplemc/mpi/communicator.hpp>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -48,6 +51,7 @@ void green_func_measurement::measure(){
             }
             ++hits[static_cast<std::size_t>(bin)];
             ++n_selected;
+            if (trace < 0.) { ++n_negative; }
         }
     }
 
@@ -105,9 +109,9 @@ void green_func_measurement::write(const std::string & path) const {
     std::fprintf(f, "# p = %.10f %.10f %.10f   boundary_phonons = %d%s\n", p[0], p[1], p[2], boundary_phonons,
                  boundary_phonons == 0 ? " (vacuum sector: G_nm(p,tau))" : boundary_phonons < 0 ? " (all: P function)" : "");
     std::fprintf(f, "# tau_max = %.10f   n_bins = %d   bin_width = %.10f   mu = %.10f\n", tau_max, n_bins, bin_width, cfg->chem_pot);
-    std::fprintf(f, "# n_samples = %llu   n_selected = %llu   n_order0 = %llu   Z_0 = %.18Le   batches = %zu x %llu samples\n",
+    std::fprintf(f, "# n_samples = %llu   n_selected = %llu   n_negative = %llu   n_order0 = %llu   Z_0 = %.18Le   batches = %zu x %llu samples\n",
                  static_cast<unsigned long long>(acc.count()), static_cast<unsigned long long>(n_selected),
-                 static_cast<unsigned long long>(n_order0), measurement::order0Integral(p, cfg->chem_pot, tau_max), acc.batches().size(),
+                 static_cast<unsigned long long>(n_negative), static_cast<unsigned long long>(n_order0), measurement::order0Integral(p, cfg->chem_pot, tau_max), acc.batches().size(),
                  static_cast<unsigned long long>(acc.batch_count()));
     std::fprintf(f, "# columns: tau_centre hits  G_00 err  G_01 err  G_02 err  G_10 err  G_11 err  G_12 err  G_20 err  G_21 err  G_22 err  trace err\n");
     for (int b {0}; b < n_bins; ++b) {
@@ -117,4 +121,12 @@ void green_func_measurement::write(const std::string & path) const {
         std::fprintf(f, " %.15Le %.6Le\n", r.trace[bb], r.trace_error[bb]);
     }
     std::fclose(f);
+}
+
+void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, green_func_measurement & m){
+    simplemc_mpi_collect(comm, m.acc);
+    simplemc::mpi::all_reduce_in_place(m.hits, MPI_SUM, comm);
+    simplemc::mpi::all_reduce_in_place(m.n_selected, MPI_SUM, comm);
+    simplemc::mpi::all_reduce_in_place(m.n_negative, MPI_SUM, comm);
+    simplemc::mpi::all_reduce_in_place(m.n_order0, MPI_SUM, comm);
 }

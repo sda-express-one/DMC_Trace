@@ -43,4 +43,8 @@ literature
 # ignore debug and reminder files
 TO_VERIFY
 
+# markdown directory
 markdown_notes
+
+# runs directory
+runs

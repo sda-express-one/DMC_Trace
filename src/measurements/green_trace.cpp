@@ -1,4 +1,7 @@
 #include "measurements/green_trace.hpp"
+#include <mpi.h>
+#include <simplemc/mpi/all_reduce.hpp>
+#include <simplemc/mpi/communicator.hpp>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -135,4 +138,12 @@ void green_trace_measurement::write(const std::string & path) const {
         std::fprintf(f, "\n");
     }
     std::fclose(f);
+}
+
+void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, green_trace_measurement & m){
+    simplemc_mpi_collect(comm, m.acc);
+    simplemc::mpi::all_reduce_in_place(m.hits, MPI_SUM, comm);
+    simplemc::mpi::all_reduce_in_place(m.n_selected, MPI_SUM, comm);
+    simplemc::mpi::all_reduce_in_place(m.n_negative, MPI_SUM, comm);
+    simplemc::mpi::all_reduce_in_place(m.n_order0, MPI_SUM, comm);
 }

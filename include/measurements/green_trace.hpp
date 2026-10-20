@@ -9,6 +9,7 @@
 #include <Eigen/Core>
 #include <simplemc/accs/batch_acc.hpp>
 #include <simplemc/accs/jackknife.hpp>
+#include <simplemc/mpi/mpi_fwd.hpp>
 #include "diagram/diagram_config.hpp"
 
 // Binned estimator of the trace of the Green function, tr G(p, tau) = sum_n G_nn(p, tau) - or, selecting
@@ -88,6 +89,9 @@ struct green_trace_measurement {
     // one line per bin: tau_centre hits, trace and error, and with split_sign the positive and negative
     // parts with their errors; preceded by '#' metadata lines
     void write(const std::string & path) const;
+
+    // several ranks (collective): merges the batches of every rank into acc and sums the counters, on every rank
+    friend void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, green_trace_measurement & m);
 
 private:
     int histograms() const { return split_sign ? 2 : 1; }

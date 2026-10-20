@@ -9,6 +9,7 @@
 #include <Eigen/Core>
 #include <simplemc/accs/batch_acc.hpp>
 #include <simplemc/accs/jackknife.hpp>
+#include <simplemc/mpi/mpi_fwd.hpp>
 #include "diagram/diagram_config.hpp"
 
 // Binned estimator of the band-matrix Green function G_nm(p, tau) - or, selecting phonons present at
@@ -17,8 +18,10 @@
 // The chain samples diagrams with weight |W|, W = tr(P) * (couplings^2, phonon propagators, e^{mu tau_D})
 // where P = diagram_head->right_component is the diagram's band matrix. Everything multiplying tr(P) is
 // positive, so sign(W) = sign(tr P), and a diagram contributes P_nm * (rest) = sign(W)|W| P_nm / tr(P)
-// to component nm: each sample contributes P_nm / |tr P|. With today's positive-only sampling this is
-// P_nm / tr P, and it is already the signed estimator once |W| is sampled.
+// to component nm: each sample contributes P_nm / |tr P|, the signed estimator (its trace is sign(W)).
+// No division by <sign> is needed: the normalisation below refers to the order-0 diagram, which is
+// always positive, so the unknown normalisation of |W| cancels in the ratio. n_negative counts the
+// selected samples with sign(W) = -1 (diagnostic).
 //
 // The factor e^{mu tau_D} is a sampling device only and is removed exactly, per sample, in two parts:
 // e^{-mu (tau_D - tau_b)} with tau_b the left edge of the sample's bin is applied when accumulating
@@ -51,7 +54,7 @@
 // ~ +1). At least 2 full batches are needed, i.e. at least ~ n_batches samples.
 //
 // Several ranks: collect the accumulator with simplemc_mpi_collect(comm, acc), and sum hits,
-// n_selected and n_order0, before calling normalised()/write().
+// n_selected, n_negative and n_order0, before calling normalised()/write().
 struct green_func_measurement {
     using acc_type = simplemc::batch_acc_dynamic<double>;
 
@@ -65,6 +68,7 @@ struct green_func_measurement {
     acc_type acc;                       // one vector sample per measure(); count() = number of samples
     std::vector<std::uint64_t> hits;    // selected samples per bin (diagnostic)
     std::uint64_t n_selected {0};       // samples that entered a bin
+    std::uint64_t n_negative {0};       // ... of which with sign -1
     std::uint64_t n_order0 {0};         // samples with no phonon line at all
 
     struct result {
@@ -95,6 +99,9 @@ struct green_func_measurement {
     // one line per bin: tau_centre hits, mean and error of G_00 ... G_22, mean and error of the trace;
     // preceded by '#' metadata lines
     void write(const std::string & path) const;
+
+    // several ranks (collective): merges the batches of every rank into acc and sums the counters, on every rank
+    friend void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, green_func_measurement & m);
 };
 
 #endif // !GREEN_FUNC_HPP
