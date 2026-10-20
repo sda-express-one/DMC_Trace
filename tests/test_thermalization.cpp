@@ -9,6 +9,8 @@
 //    with all length-preserving updates, the monitor in a measurement_set, checkpoint() from on_checkpoint and
 //    thermalized() from stop_when. The run must stop thermalized before the step cap, at a multiple of the
 //    checkpoint interval, with every rank at the same step count.
+// 3. The wall-time deadline: with a deadline already past, a chain that cannot pass is stopped at the checkpoint
+//    after the first evaluation, as timedOut() and not thermalized(); without a deadline it keeps going.
 #include <cmath>
 #include <cstdio>
 #include <memory>
@@ -183,6 +185,28 @@ static void options_and_guard(test::Checks & check){
                            "(the window could never reach 50 ESS per split chain)");
 }
 
+static void deadline(test::Checks & check){
+    // one scalar, 16 batch means of iid noise per checkpoint: 8 draws per split chain, below the 50 ESS threshold, so
+    // the test can never pass and only the deadline can end the phase
+    std::mt19937_64 rng {77ULL};
+    std::normal_distribution<double> g {0., 1.};
+    const auto window {[&]{ std::vector<double> w(16); for (double & x : w) { x = g(rng); } return w; }};
+
+    thermalization_control timed {MPI_COMM_SELF, {"x"}, 256};
+    timed.setDeadline(MPI_Wtime() - 1.);
+    thermalization_control open {MPI_COMM_SELF, {"x"}, 256};
+    int timed_at {0};
+    for (int cp {1}; cp <= 5; ++cp) {
+        timed.checkpoint(window(), 16, static_cast<std::uint64_t>(cp));
+        open.checkpoint(window(), 16, static_cast<std::uint64_t>(cp));
+        if (timed.stopped() && timed_at == 0) { timed_at = cp; }
+    }
+    // the decision taken at checkpoint 1 is read at checkpoint 2 (one interval late, as for thermalization)
+    check(timed_at == 2 && timed.timedOut() && !timed.thermalized() && !open.stopped(),
+          "past deadline: stopped at checkpoint %d (expected 2), timedOut %d, thermalized %d; without deadline still running: %d",
+          timed_at, timed.timedOut() ? 1 : 0, timed.thermalized() ? 1 : 0, open.stopped() ? 0 : 1);
+}
+
 int main(int argc, char ** argv){
     MPI_Init(&argc, &argv);
     int rank {0}, size {1};
@@ -191,7 +215,7 @@ int main(int argc, char ** argv){
     int code {0};
     if (rank == 0) {
         test::Checks check {"R-hat thermalization (convergence_monitor, thermalization_control)"};
-        if (size == 1) { options_and_guard(check); in_process(check); }     // once, not on every rank
+        if (size == 1) { options_and_guard(check); in_process(check); deadline(check); }     // once, not on every rank
         mpi_run(check);
         code = check.exit_code();
     }

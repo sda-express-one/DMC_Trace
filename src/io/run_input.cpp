@@ -72,6 +72,14 @@ namespace {
 }
 
 namespace input {
+    simplemc::simulation_params defaultParams(){
+        simplemc::simulation_params p;
+        p.max_time = 23.5 * 3600.;      // 84600 s: a 24 h cluster slot minus 30 min for startup and output
+        p.steps_per_cycle = 10;
+        p.cycles_per_check = 1000;
+        return p;
+    }
+
     void validate(const run_input & in){
         std::vector<std::string> err;
         const auto require {[&](bool ok, const std::string & what){ if (!ok) { err.push_back(what); } }};
@@ -186,7 +194,7 @@ namespace input {
         simplemc::load_json_file(path, [&](const simplemc::json_serializer & s){
             // unknown keys: compared with the complete default file
             simplemc::json_serializer ref;
-            save(ref, simplemc::simulation_params {}, run_input {});
+            save(ref, defaultParams(), run_input {});
             std::vector<std::string> unknown;
             unknownKeys(s.root(), ref.root(), "", unknown);
             if (!unknown.empty()) {
@@ -218,7 +226,7 @@ namespace input {
     }
 
     void writeDefault(const std::filesystem::path & path){
-        write(path, simplemc::simulation_params {}, run_input {});
+        write(path, defaultParams(), run_input {});
     }
 
     void print(const run_input & in, std::FILE * fp){

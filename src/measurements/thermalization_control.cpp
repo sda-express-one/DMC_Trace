@@ -47,7 +47,11 @@ void thermalization_control::checkpoint(const std::vector<double> & window, std:
     // 1. the decision of the previous checkpoint (the root filled it right after that gather)
     if (bcast_req_ != MPI_REQUEST_NULL) {
         MPI_Wait(&bcast_req_, MPI_STATUS_IGNORE);
-        if (decision_[0] != 0) { stop_ = true; return; }      // every rank sees the same decision: nothing new posted
+        if (decision_[0] != 0) {      // every rank sees the same decision: nothing new posted
+            stop_ = true;
+            stop_reason_ = decision_[0];
+            return;
+        }
     }
     if (gather_req_ != MPI_REQUEST_NULL) { MPI_Wait(&gather_req_, MPI_STATUS_IGNORE); }   // non-root: long complete
 
@@ -76,7 +80,8 @@ void thermalization_control::checkpoint(const std::vector<double> & window, std:
             b = 0;
         }
         const Record rec {evaluate(windows, b, steps)};
-        decision_ = {rec.consecutive >= opt_.consecutive ? 1 : 0, rec.consecutive};
+        const int stop {rec.consecutive >= opt_.consecutive ? 1 : (MPI_Wtime() >= deadline_ ? 2 : 0)};
+        decision_ = {stop, rec.consecutive};
     }
     MPI_Ibcast(decision_.data(), 2, MPI_INT, opt_.root, comm_, &bcast_req_);
 }
@@ -117,7 +122,8 @@ void thermalization_control::write(const std::string & path) const {
     std::fprintf(f, "# thermalization: R-hat convergence test (Vehtari et al. 2021), %d chains\n", size_);
     std::fprintf(f, "# rhat_max = %.4f   min bulk-ESS per split chain = %.1f   min tail-ESS per split chain = %.1f   consecutive = %d\n",
                  opt_.rhat_max, opt_.min_bulk_ess_per_split_chain, opt_.min_tail_ess_per_split_chain, opt_.consecutive);
-    std::fprintf(f, "# thermalized: %s\n", stop_ ? "yes" : "no (not yet, or the step/time cap ended the run)");
+    std::fprintf(f, "# thermalized: %s\n", thermalized() ? "yes"
+                 : timedOut() ? "no - stopped by the wall-time budget" : "no (not yet, or the step cap ended the run)");
     std::fprintf(f, "# columns: checkpoint steps batches scalar rhat rhat_bulk rhat_fold ess_bulk ess_tail pass consecutive\n");
     for (const Record & r : history_) {
         for (std::size_t k {0}; k < names_.size(); ++k) {

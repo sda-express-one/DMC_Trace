@@ -100,8 +100,8 @@ int main(){
         run_input in;
         in.diagram.mu = -7.;
         input::load(f, params, in);
-        const bool same {document(params, in) == document(simplemc::simulation_params {}, run_input {})};
-        check(same && params.max_time == simplemc::simulation_params {}.max_time && in.update_weights.size() == update_names.size(),
+        const bool same {document(params, in) == document(input::defaultParams(), run_input {})};
+        check(same && params.max_time == input::defaultParams().max_time && in.update_weights.size() == update_names.size(),
               "writeDefault -> load reproduces the defaults (config, params, %zu update weights)", in.update_weights.size());
         fs::remove(f);
     }
@@ -114,7 +114,7 @@ int main(){
                          "params": {"max_steps": 12345},
                          "updates": {"chg_tau": {"weight": 0}, "str_diagram": {"weight": 0}, "scl_diagram": {"weight": 0},
                                      "swp_ph": {"weight": 0.25}}})");
-        simplemc::simulation_params params;
+        simplemc::simulation_params params {input::defaultParams()};     // as main starts
         run_input in;
         input::load(f, params, in);
         const run_input def;
@@ -122,7 +122,7 @@ int main(){
                         && in.diagram.tau_fixed && in.diagram.tau_max == 100. && params.max_steps == 12345
                         && in.update_weights.at("swp_ph") == 0.25 && in.update_weights.at("chg_tau") == 0.};
         const bool kept {in.diagram.max_internal_lines == def.diagram.max_internal_lines && in.thermalization.rhat_max == def.thermalization.rhat_max
-                         && in.update_weights.at("add_int_ph") == 1. && params.steps_per_cycle == simplemc::simulation_params {}.steps_per_cycle
+                         && in.update_weights.at("add_int_ph") == 1. && params.steps_per_cycle == input::defaultParams().steps_per_cycle
                          && in.output.prefix == def.output.prefix};
         check(set && kept, "a partial file sets the keys it names (2 phonon modes, fixed tau, weights) and keeps every other default");
 
@@ -258,7 +258,7 @@ int main(){
         nlohmann::json def;
         const fs::path def_path {inputs / "default.json"};
         if (fs::exists(def_path)) { std::ifstream(def_path) >> def; }
-        const bool current {def == document(simplemc::simulation_params {}, run_input {})};
+        const bool current {def == document(input::defaultParams(), run_input {})};
         check(files > 0 && failed.empty() && current,
               "inputs/: %d file(s) load and validate (%zu failed); default.json %s (regenerate with bin/diagramc inputs/default.json)",
               files, failed.size(), current ? "matches the current defaults" : "is OUT OF DATE or missing");

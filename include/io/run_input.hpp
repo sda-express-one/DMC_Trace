@@ -23,7 +23,7 @@
 //   {
 //     "config":       { "model": {...}, "diagram": {...}, "start": {...}, "rng": {...},
 //                       "measurements": {...}, "thermalization": {...}, "output": {...} },   <- run_input
-//     "params":       { simplemc::simulation_params of the production run },
+//     "params":       { simplemc::simulation_params of the production run; defaults: input::defaultParams() },
 //     "updates":      { "add_int_ph": {"weight": 1.0}, ... },        <- run_input::update_weights
 //     "measurements": { "gs_energy": {"is_active": true}, ... }      <- run_input::measurements_active
 //   }
@@ -125,6 +125,12 @@ struct run_input {
 };
 
 namespace input {
+    // The project defaults of the "params" block (simplemc's own suit its tutorials, not long runs):
+    // max_time = 84600 s (23 h 30 min) is the wall-time budget of the WHOLE job - main stops the thermalization at
+    // it and gives the production only what is left; steps_per_cycle = 10, cycles_per_check = 1000 (stop checks
+    // every 1e4 steps); max_steps unlimited (set it, or let the budget decide); no checkpoints.
+    simplemc::simulation_params defaultParams();
+
     // Throws simplemc::simplemc_exception listing every violated condition.
     void validate(const run_input & in);
 
@@ -135,8 +141,8 @@ namespace input {
     // Unknown keys throw.
     void load(const std::filesystem::path & path, simplemc::simulation_params & params, run_input & in);
 
-    // Writes the complete file (config, params, updates, measurements) with the given values - the defaults if called with
-    // default-constructed arguments.
+    // Writes the complete file (config, params, updates, measurements) with the given values; writeDefault with
+    // defaultParams() and run_input {}.
     void write(const std::filesystem::path & path, const simplemc::simulation_params & params, const run_input & in);
     void writeDefault(const std::filesystem::path & path);
 

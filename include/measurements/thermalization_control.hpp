@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 #include <mpi.h>
@@ -31,6 +32,11 @@
 // least n_batches/4 draws per split chain, and an ESS cannot exceed the number of draws: the constructor refuses
 // settings with n_batches/4 below the per-split-chain ESS thresholds (with 50, n_batches >= 200: the default 256).
 //
+// Wall-time budget: with setDeadline(t) (an absolute MPI_Wtime value), the root also ends the phase - without
+// thermalization - at the first checkpoint it evaluates after t; the decision travels like a "thermalized" one, so
+// every rank stops at the same checkpoint (a per-rank time limit would not). thermalized() and timedOut() tell the
+// two apart, stopped() is either: use it in stop_when.
+//
 // Usage (the diagram state carries over from thermalization to data collection):
 //     convergence_monitor mon {&cfg, {}};
 //     auto therm {simplemc::measurement_set{simplemc::measurement{mon, "convergence"}}};
@@ -39,7 +45,7 @@
 //     auto & m {therm.get<0>().value()};                    // the monitor inside the set (index 0)
 //     simplemc::run(rng, kernel, therm, tp, simplemc::run_callbacks{
 //         .on_checkpoint = [&](const auto & ctx){ ctl.checkpoint(m, ctx.steps_done); },
-//         .stop_when     = [&](const auto &){ return ctl.thermalized(); }});
+//         .stop_when     = [&](const auto &){ return ctl.stopped(); }});
 //     if (!ctl.thermalized()) { /* cap reached: warn or abort */ }
 //     simplemc::run(rng, kernel, production, pp, ...);
 struct convergence_monitor;
@@ -77,8 +83,13 @@ public:
     // the same with an explicit window (scalar-major, `batches` per scalar), e.g. for tests
     void checkpoint(const std::vector<double> & window, std::size_t batches, std::uint64_t steps);
 
-    // from run_callbacks::stop_when: true on every rank from the same checkpoint on
-    bool thermalized() const { return stop_; }
+    // optional wall-time budget: an absolute MPI_Wtime value (the clock of the root decides); none by default
+    void setDeadline(double wtime) { deadline_ = wtime; }
+
+    // true on every rank from the same checkpoint on: the phase ended by convergence, by the deadline, or either
+    bool thermalized() const { return stop_reason_ == 1; }
+    bool timedOut() const { return stop_reason_ == 2; }
+    bool stopped() const { return stop_; }
 
     // The pure decision logic (no MPI): windows[r] of rank/chain r, scalar-major with `batches` per scalar. Updates
     // the consecutive count and returns the record; thermalization is reached when record.consecutive >= consecutive.
@@ -99,12 +110,14 @@ private:
     int rank_ {0}, size_ {1};
 
     bool stop_ {false};
+    int stop_reason_ {0};                   // 1 thermalized, 2 deadline
+    double deadline_ {std::numeric_limits<double>::infinity()};
     int consecutive_ {0};
     int checkpoints_ {0};
     std::vector<Record> history_;
 
     // non-blocking exchange: send buffer [batches, window...] of fixed length, the root's receive buffer, the
-    // decision {thermalized, consecutive}
+    // decision {stop: 0 continue / 1 thermalized / 2 deadline, consecutive}
     std::vector<double> send_, recv_;
     std::array<int, 2> decision_ {0, 0};
     MPI_Request gather_req_ {MPI_REQUEST_NULL}, bcast_req_ {MPI_REQUEST_NULL};

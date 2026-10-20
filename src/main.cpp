@@ -10,10 +10,15 @@
 // Without an argument, or with a file that does not exist, the root writes the default input to that path
 // (input.json without an argument) and the program exits.
 //
+// Wall time: params.max_time is the budget of the WHOLE job (default 84600 s = 23 h 30 min, input::defaultParams).
+// The thermalization is ended collectively at the first R-hat checkpoint past it; the production gets what is left
+// (skipped, exit code 3, if less than a minute). <prefix>_run.dat records the budget and why each phase ended.
+//
 // Starts: even ranks from the bare propagator, odd ranks from a random diagram (start.random_start), so that the
 // chains approach the target from both sides. If R-hat does not pass before the thermalization cap, production
 // runs anyway, with a warning and "thermalized: no" in <prefix>_run.dat.
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -113,6 +118,7 @@ namespace {
     std::string outPath(const run_input & in, const std::string & what){ return in.output.prefix + "_" + what; }
 
     int run(int argc, char ** argv, const simplemc::mpi::communicator & comm){
+        const double t0 {MPI_Wtime()};      // start of the job: params.max_time is the budget of the whole job
         const int rank {comm.rank()};
         const bool root {rank == 0};
         const std::filesystem::path path {argc > 1 ? argv[1] : "input.json"};
@@ -127,7 +133,7 @@ namespace {
             }
             return 0;
         }
-        simplemc::simulation_params params;
+        simplemc::simulation_params params {input::defaultParams()};     // keys missing from the file keep these
         run_input in;
         input::load(path, params, in);
         input::applyGlobals(in);
@@ -146,29 +152,35 @@ namespace {
         dmc_update_set us {makeUpdateSet(&cfg, &chain.rng, in.update_weights)};
         simplemc::metropolis_kernel kernel {us};
 
-        // 3. thermalization under R-hat control
-        bool thermalized {false};
+        // 3. thermalization under R-hat control, ended also (collectively, by the root's clock) by the wall-time budget
+        const double budget {params.max_time};
+        bool thermalized {false}, therm_timed_out {false};
         std::uint64_t therm_steps {0};
+        double therm_time {0.};
         if (in.thermalization.enabled) {
             simplemc::measurement_set therm {simplemc::measurement {convergence_monitor {&cfg, in.monitorOptions()}, "convergence"}};
             convergence_monitor & mon {therm.get<0>().value()};
             thermalization_control ctl {comm, mon.names(), mon.maxWindowBatches(), in.controlOptions()};
+            ctl.setDeadline(t0 + budget);
             const simplemc::simulation_params tp {in.thermalizationParams()};
             simplemc::progress_printer printer {progress("[thermalization]", tp.max_steps, 0., root)};
             const simplemc::simulation_ctx ctx {simplemc::run(chain.rng, kernel, therm, tp, simplemc::run_callbacks {
                 .on_cycle = [&](const simplemc::simulation_ctx & c){ printer(c); },
                 .on_checkpoint = [&](const simplemc::simulation_ctx & c){ ctl.checkpoint(mon, c.steps_done); },
-                .stop_when = [&](const simplemc::simulation_ctx &){ return ctl.thermalized(); }})};
+                .stop_when = [&](const simplemc::simulation_ctx &){ return ctl.stopped(); }})};
             thermalized = ctl.thermalized();
+            therm_timed_out = ctl.timedOut();
             therm_steps = ctx.steps_done;
+            therm_time = ctx.runtime;
             if (root) {
                 ctl.write(outPath(in, "thermalization.dat"));
                 if (thermalized) {
                     std::printf("\ndiagramc: thermalized after %llu steps per chain\n", static_cast<unsigned long long>(therm_steps));
                 }
                 else {
-                    std::printf("\ndiagramc: WARNING - R-hat did not pass within %llu steps per chain; production runs anyway "
-                                "(see %s)\n", static_cast<unsigned long long>(therm_steps), outPath(in, "thermalization.dat").c_str());
+                    std::printf("\ndiagramc: WARNING - R-hat did not pass within %llu steps per chain (%s); production runs anyway "
+                                "if time is left (see %s)\n", static_cast<unsigned long long>(therm_steps),
+                                therm_timed_out ? "wall-time budget reached" : "step cap reached", outPath(in, "thermalization.dat").c_str());
                 }
             }
             us.reset_counters();
@@ -190,14 +202,31 @@ namespace {
                                                             in.measurements.split_sign, nb}, "green_trace"}};
         for (const auto & [name, active] : in.measurements_active) { ms.set_active(name, active); }
 
+        // the production gets what is left of the budget, the same value on every rank (the root's clock); it has no
+        // collectives until the end, so ranks may stop at different step counts (the final collect merges them)
+        double remaining {budget - (MPI_Wtime() - t0)};
+        simplemc::mpi::broadcast(remaining, 0, comm);
+        constexpr double min_production_time {60.};
+        const bool produce {remaining >= min_production_time};
+        simplemc::simulation_params prod {params};
+        prod.max_time = std::max(remaining, 0.);
         simplemc::simulation_stats stats;
-        {
-            simplemc::progress_printer printer {progress("[production]", params.max_steps, params.max_time, root)};
-            stats += simplemc::run(chain.rng, kernel, ms, params, simplemc::run_callbacks {
+        std::uint64_t prod_steps {0};
+        if (produce) {
+            simplemc::progress_printer printer {progress("[production]", prod.max_steps, prod.max_time, root)};
+            const simplemc::simulation_ctx ctx {simplemc::run(chain.rng, kernel, ms, prod, simplemc::run_callbacks {
                 .on_step = [&](const simplemc::simulation_ctx &){ cfg.countSign(); },
-                .on_cycle = [&](const simplemc::simulation_ctx & c){ printer(c); }});
+                .on_cycle = [&](const simplemc::simulation_ctx & c){ printer(c); }})};
+            prod_steps = ctx.steps_done;
+            stats += ctx;
+            if (root) { std::printf("\n"); }
         }
-        if (root) { std::printf("\n"); }
+        else if (root) {
+            std::printf("diagramc: WARNING - only %.0f s of the %.0f s wall-time budget left after thermalization: production "
+                        "skipped\n", std::max(remaining, 0.), budget);
+        }
+        const char * prod_end {!produce ? "skipped (budget used up)"
+                               : prod_steps >= prod.max_steps ? "max_steps reached" : "wall-time budget reached"};
 
         // 5. combine the ranks (collective: every rank, the same active estimators) and write
         std::uint64_t n_negative {cfg.n_negative};
@@ -206,7 +235,7 @@ namespace {
         simplemc_mpi_collect(comm, stats);
         int failed {0};
         ms.for_each([&](auto & m){
-            if (!m.is_active()) { return; }
+            if (!produce || !m.is_active()) { return; }
             try {
                 simplemc_mpi_collect(comm, m.value());
                 if (root) { m.value().write(outPath(in, m.name() + ".dat")); }
@@ -223,11 +252,14 @@ namespace {
             if (f == nullptr) { throw std::runtime_error("cannot open " + run_path); }
             std::fprintf(f, "# diagramc run: %d chain(s), input %s\n", comm.size(), path.string().c_str());
             input::print(in, f);
-            std::fprintf(f, "\n# thermalized: %s, %llu steps per chain\n",
-                         !in.thermalization.enabled ? "not checked (thermalization disabled)" : (thermalized ? "yes (R-hat passed)" : "NO (cap reached)"),
-                         static_cast<unsigned long long>(therm_steps));
-            std::fprintf(f, "\n# production parameters\n");
-            simplemc::print(params, f);
+            std::fprintf(f, "\n# thermalized: %s, %llu steps per chain, %.1f s\n",
+                         !in.thermalization.enabled ? "not checked (thermalization disabled)"
+                         : thermalized ? "yes (R-hat passed)" : therm_timed_out ? "NO (wall-time budget reached)" : "NO (step cap reached)",
+                         static_cast<unsigned long long>(therm_steps), therm_time);
+            std::fprintf(f, "# wall-time budget = %.0f s for the whole job; production limit = %.0f s; production: %s\n",
+                         budget, prod.max_time, prod_end);
+            std::fprintf(f, "\n# production parameters (max_time: what was left of the budget)\n");
+            simplemc::print(prod, f);
             std::fprintf(f, "\n# production, summed over the chains\n");
             simplemc::print(stats, f);
             std::fprintf(f, "Negative-sign steps = %llu (fraction %.6g)\n", static_cast<unsigned long long>(n_negative),
@@ -259,7 +291,7 @@ namespace {
             std::printf("diagramc: %llu steps in %.1f s (summed over the chains); results in %s_*\n",
                         static_cast<unsigned long long>(stats.cumulative_steps), stats.cumulative_time, in.output.prefix.c_str());
         }
-        return failed == 0 ? 0 : 2;
+        return !produce ? 3 : failed == 0 ? 0 : 2;
     }
 }
 

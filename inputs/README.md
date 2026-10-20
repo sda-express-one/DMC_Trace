@@ -132,16 +132,29 @@ The outputs are:
 - `<prefix>_run.dat`, with the input, the run statistics, the negative-sign fraction and the update acceptances;
 - `<prefix>_input.json`, the full input actually used.
 
-## `params`: the production run (simplemc)
+## `params`: the production run, and the wall-time budget of the whole job
+This is simplemc's `simulation_params`, with project defaults (`input::defaultParams()`) instead of simplemc's own.
 
 | key | default | meaning |
 |---|---|---|
-| `max_steps` | 2⁶⁴ − 1 | production steps per chain. **Set it.** |
-| `max_time` | 10 | wall-clock limit in seconds. **The default stops production after 10 s**, so set it large (e.g. 1e9) and let `max_steps` decide. |
-| `steps_per_cycle` | 5 | steps between two measurements |
-| `cycles_per_check` | 1e6 | cycles between stop checks (step and time limits) |
+| `max_time` | 84600 (23 h 30 min) | **wall-time budget of the whole job** in seconds: startup, thermalization and production together (see below) |
+| `max_steps` | 2⁶⁴ − 1 (unlimited) | production steps per chain; unlimited lets the budget decide |
+| `steps_per_cycle` | 10 | steps between two measurements |
+| `cycles_per_check` | 1000 | cycles between stop checks (steps and time), i.e. every 1e4 steps |
 | `skip_measurements` | false | run without measuring |
 | `checkpoint_after_steps`, `checkpoint_after_time` | max | unused (no restart yet) |
+
+How the budget is used:
+- **Thermalization** is ended at the first R̂ checkpoint after the budget runs out. The root decides from its own
+  clock and the decision is broadcast, so every rank stops at the same checkpoint. A per-rank time limit would
+  leave the collective checkpoints unmatched.
+- **Production** gets what is left, the same limit on every rank. If less than 60 s is left, production is skipped
+  (exit code 3) and only the thermalization log and `<prefix>_run.dat` are written.
+- **Stop checks** happen only every `steps_per_cycle × cycles_per_check` steps, so the overshoot is at most one
+  block, plus one checkpoint interval for thermalization, plus the time to write the output. On a 24 h queue,
+  23 h 30 min leaves margin for that.
+- **`<prefix>_run.dat`** records the budget, how long thermalization took, the production limit, and why
+  production ended (max_steps reached, budget reached, or skipped).
 
 ## `updates`: selection weights
 Each update is selected with probability ∝ its weight. add/rm of internal lines and add/rm of external lines are
