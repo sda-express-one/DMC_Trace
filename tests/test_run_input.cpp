@@ -124,10 +124,17 @@ int main(){
         const bool typo {throws([&]{ run_input x; simplemc::simulation_params p; input::load(f, p, x); })};
         writeText(f, R"({"updates": {"add_internal": {"weight": 2}}})");
         const bool bad_update {throws([&]{ run_input x; simplemc::simulation_params p; input::load(f, p, x); })};
-        writeText(f, R"({"measurements": {"gs_energy": {"is_active": false}}, "params": {"max_time": 5}})");
-        bool meas_ok {!throws([&]{ run_input x; simplemc::simulation_params p; input::load(f, p, x); })};
-        check(typo && bad_update && meas_ok, "unknown keys are rejected (config/diagram/tau_fixd, updates/add_internal); "
-                                             "the measurements block is left to the measurement set");
+        writeText(f, R"({"measurements": {"gs_energy_x": {"is_active": true}}})");
+        const bool bad_meas {throws([&]{ run_input x; simplemc::simulation_params p; input::load(f, p, x); })};
+        writeText(f, R"({"measurements": {"qp_weights": {"is_active": false}, "eff_mass": {"is_active": true}}, "params": {"max_time": 5}})");
+        run_input meas;
+        simplemc::simulation_params mp;
+        const bool meas_ok {!throws([&]{ input::load(f, mp, meas); }) && !meas.measurements_active.at("qp_weights")
+                            && meas.measurements_active.at("eff_mass") && meas.measurements_active.at("gs_energy")
+                            && !meas.measurements_active.at("green_func")};
+        check(typo && bad_update && bad_meas && meas_ok,
+              "unknown keys are rejected (config/diagram/tau_fixd, updates/add_internal, measurements/gs_energy_x); "
+              "is_active flags are read, the others keep their defaults");
         fs::remove(f);
     }
 
@@ -164,7 +171,18 @@ int main(){
         expect(rejected([](run_input & in){ in.thermalization.checkpoint_interval = 15000; }), "checkpoint interval not a multiple of a check");
         expect(rejected([](run_input & in){ in.model.C_LK = 0.5; in.thermalization.monitor_orbital = true; }), "orbital monitor with C != 0");
         expect(rejected([](run_input & in){ in.start.random_start = true; in.start.n_internal_max = 500; }), "random start beyond the capacity");
-        check(ok == total, "validate: %d/%d settings classified correctly (2 valid, the rest rejected)", ok, total);
+        expect(rejected([](run_input & in){ in.model.A_LK = 2.; in.measurements_active["eff_mass"] = true; }), "eff_mass with A != B");
+        expect(!rejected([](run_input & in){ in.model.A_LK = 2.; in.measurements_active["eff_mass_uniaxial"] = true; }),
+               "eff_mass_uniaxial with A != B, C = 0 (must pass)");
+        expect(rejected([](run_input & in){ in.model.C_LK = 0.5; in.measurements_active["eff_mass_uniaxial"] = true; }),
+               "eff_mass_uniaxial with C != 0");
+        expect(rejected([](run_input & in){ in.diagram.p = {0.1, 0., 0.}; in.measurements_active["eff_mass"] = true; }),
+               "eff_mass at p != 0 with variable length");
+        expect(rejected([](run_input & in){
+            in.diagram.tau_fixed = true; in.diagram.tau_D_start = in.diagram.tau_max; in.diagram.mu = 0.;
+            for (const auto n : length_changing_updates) { in.update_weights[std::string {n}] = 0.; }
+            in.measurements_active["green_trace"] = true; }), "green_trace at fixed tau");
+        check(ok == total, "validate: %d/%d settings classified correctly (3 valid, the rest rejected)", ok, total);
     }
 
     // 4. globals

@@ -16,7 +16,8 @@ LDFLAGS = -L/home/samuele/.local/lib -Wl,-rpath=/home/samuele/.local/lib -Wl,--s
 
 BUILD_DIR = $(ROOT)/build/tests
 
-SOURCES = $(shell find $(ROOT)/src -name '*.cpp')
+# src/main.cpp is the program's entry point: the test executables have their own main
+SOURCES = $(filter-out $(ROOT)/src/main.cpp,$(shell find $(ROOT)/src -name '*.cpp'))
 OBJECTS = $(patsubst $(ROOT)/src/%.cpp,$(BUILD_DIR)/obj/%.o,$(SOURCES))
 
 TESTS = $(basename $(wildcard test_*.cpp))
