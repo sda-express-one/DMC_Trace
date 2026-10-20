@@ -4,7 +4,7 @@
 // chains are thermalized under R-hat control (the ranks are the chains: measurements/thermalization_control.hpp),
 // then the production run measures the active estimators, the ranks are combined and the root writes
 //     <prefix>_<estimator>.dat   one per active estimator (its write())
-//     <prefix>_<estimator>_chains.dat  gs_energy, eff_mass, eff_mass_uniaxial: every chain's own value and error
+//     <prefix>_<estimator>_chains.dat  gs_energy, eff_mass, eff_mass_uniaxial, avg_sign: every chain's own value and error
 //     <prefix>_thermalization.dat  the R-hat checkpoints
 //     <prefix>_run.dat           input, run parameters, update statistics, sign, thermalization outcome
 //     <prefix>_input.json        the input actually used (every key, defaults filled in)
@@ -50,6 +50,7 @@
 #include "diagram/vertex_manager.hpp"
 #include "io/run_input.hpp"
 #include "measurements/convergence_monitor.hpp"
+#include "measurements/avg_sign.hpp"
 #include "measurements/eff_mass.hpp"
 #include "measurements/eff_mass_uniaxial.hpp"
 #include "measurements/green_func.hpp"
@@ -260,7 +261,8 @@ namespace {
             simplemc::measurement {green_func_measurement {&cfg, d.p, in.measurements.green_n_bins, in.measurements.boundary_phonons, nb},
                                    "green_func"},
             simplemc::measurement {green_trace_measurement {&cfg, d.p, in.measurements.green_n_bins, in.measurements.boundary_phonons,
-                                                            in.measurements.split_sign, nb}, "green_trace"}};
+                                                            in.measurements.split_sign, nb}, "green_trace"},
+            simplemc::measurement {avg_sign_measurement {&cfg, d.tau_min, d.tau_fixed, nb}, "avg_sign"}};
         for (const auto & [name, active] : in.measurements_active) { ms.set_active(name, active); }
 
         // the production gets what is left of the budget, the same value on every rank (the root's clock); it has no
@@ -304,6 +306,9 @@ namespace {
             }
             if (in.measurements_active.at("eff_mass_uniaxial")) {
                 writeChains(comm, *ms.get<eff_mass_uniaxial_measurement>("eff_mass_uniaxial"), "eff_mass_uniaxial", in);
+            }
+            if (in.measurements_active.at("avg_sign")) {
+                writeChains(comm, *ms.get<avg_sign_measurement>("avg_sign"), "avg_sign", in);
             }
         }
         int failed {0};
@@ -359,6 +364,12 @@ namespace {
                     const auto r {e->normalised()};
                     std::printf("m*_par/m_par = %.8Lg +- %.3Lg   m*_perp/m_perp = %.8Lg +- %.3Lg\n",
                                 r.mass_ratio_par, r.mass_ratio_par_error, r.mass_ratio_perp, r.mass_ratio_perp_error);
+                }
+            }
+            if (in.measurements_active.at("avg_sign")) {
+                if (const auto * e {ms.get<avg_sign_measurement>("avg_sign")}; e != nullptr && e->acc.batches().size() >= 2) {
+                    const auto r {e->normalised()};
+                    std::printf("<s> = %.8Lg +- %.3Lg\n", r.sign, r.sign_error);
                 }
             }
             std::printf("diagramc: %llu steps in %.1f s (summed over the chains); results in %s_*\n",

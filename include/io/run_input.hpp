@@ -38,8 +38,8 @@
 // Order of use: input::load -> input::applyGlobals (before any measurement is constructed: eff_mass* capture
 // A_LK, B_LK at construction) -> build the diagram -> makeUpdateSet (updates/update_set.hpp) with the weights.
 // the production estimators, in the order of main's measurement set: the keys of the "measurements" block
-inline constexpr std::array<std::string_view, 6> measurement_names {
-    "gs_energy", "qp_weights", "eff_mass", "eff_mass_uniaxial", "green_func", "green_trace"};
+inline constexpr std::array<std::string_view, 7> measurement_names {
+    "gs_energy", "qp_weights", "eff_mass", "eff_mass_uniaxial", "green_func", "green_trace", "avg_sign"};
 
 struct run_input {
     struct Model {
@@ -86,6 +86,7 @@ struct run_input {
     struct Thermalization {
         bool enabled {true};
         bool monitor_tau_D {false};             // convergence_monitor::Options
+        bool monitor_sign {true};
         bool monitor_energy {true};
         bool monitor_orbital {false};
         std::size_t monitor_n_batches {256};
@@ -190,6 +191,7 @@ void simplemc_save_input_config(S s, const run_input & in){
     auto t {s["thermalization"]};
     t.save_at("enabled", in.thermalization.enabled);
     t.save_at("monitor_tau_D", in.thermalization.monitor_tau_D);
+    t.save_at("monitor_sign", in.thermalization.monitor_sign);
     t.save_at("monitor_energy", in.thermalization.monitor_energy);
     t.save_at("monitor_orbital", in.thermalization.monitor_orbital);
     t.save_at("monitor_n_batches", in.thermalization.monitor_n_batches);
@@ -250,6 +252,7 @@ void simplemc_load_input_config(const S & s, run_input & in){
         const auto t {s["thermalization"]};
         t.try_load_at("enabled", in.thermalization.enabled);
         t.try_load_at("monitor_tau_D", in.thermalization.monitor_tau_D);
+        t.try_load_at("monitor_sign", in.thermalization.monitor_sign);
         t.try_load_at("monitor_energy", in.thermalization.monitor_energy);
         t.try_load_at("monitor_orbital", in.thermalization.monitor_orbital);
         t.try_load_at("monitor_n_batches", in.thermalization.monitor_n_batches);

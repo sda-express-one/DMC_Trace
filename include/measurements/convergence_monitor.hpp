@@ -21,15 +21,18 @@
 //     rms_w       root mean square phonon momentum over all lines (0 without lines)
 //     rms_k       sqrt(sum_segments |k|^2 dtau / tau_D), the time-averaged electron momentum
 //     tau_D       the diagram length              (Options::tau_D, for variable-length runs)
+//     sign        sign(tr P) = +-1, the diagram's sign (Options::sign; a constant +1 without a sign problem, which
+//                 diagnose() passes exactly: R-hat 1, ESS S)
 //     energy      the energy estimate X of gs_energy_measurement (Options::energy; costlier: 3x3 products per segment)
 //     M_xx M_yy M_zz   diagonal of U P U^T / |tr P|, the orbital fractions for C = 0 (Options::orbital)
-// The sign of the diagram is not used (s = +1 in every model run so far). Every call adds exactly one sample, so
+// The sign of the diagram enters only through the sign scalar. Every call adds exactly one sample, so
 // ranks running the same number of cycles hold the same number of batches.
 struct convergence_monitor {
     using acc_type = simplemc::batch_acc_dynamic<double>;
 
     struct Options {
         bool tau_D {false};
+        bool sign {true};
         bool energy {false};
         bool orbital {false};
         std::size_t n_batches {256};

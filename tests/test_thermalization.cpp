@@ -174,14 +174,15 @@ static void options_and_guard(test::Checks & check){
     Chain chain {3ULL, 12., true};
     convergence_monitor all {&chain.d.cfg, {.tau_D = true, .energy = true, .orbital = true}};
     const std::vector<double> s {all.scalars()};
-    bool finite {s.size() == 10 && all.names().size() == 10};
+    bool finite {s.size() == 11 && all.names().size() == 11};
     for (const double x : s) { finite = finite && std::isfinite(x); }
-    // orbital fractions of A = B: 1/3 each
-    finite = finite && std::abs(s[7] - 1./3.) < 1e-12 && std::abs(s[8] - 1./3.) < 1e-12 && std::abs(s[9] - 1./3.) < 1e-12;
+    // the sign (index 6, after tau_D) is +1 at C = 0; orbital fractions of A = B: 1/3 each
+    finite = finite && all.names()[6] == "sign" && s[6] == 1.
+          && std::abs(s[8] - 1./3.) < 1e-12 && std::abs(s[9] - 1./3.) < 1e-12 && std::abs(s[10] - 1./3.) < 1e-12;
 
     bool threw {false};
     try { thermalization_control bad {MPI_COMM_SELF, all.names(), 64}; } catch (const std::invalid_argument &) { threw = true; }
-    check(finite && threw, "all monitor options: 10 finite scalars (orbital fractions 1/3 for A = B); n_batches = 64 refused "
+    check(finite && threw, "all monitor options: 11 finite scalars (sign +1, orbital fractions 1/3 for A = B); n_batches = 64 refused "
                            "(the window could never reach 50 ESS per split chain)");
 }
 

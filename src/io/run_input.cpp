@@ -29,7 +29,7 @@ diagram_builder::RandomDiagramSpec run_input::randomDiagramSpec() const {
 }
 
 convergence_monitor::Options run_input::monitorOptions() const {
-    return {.tau_D = thermalization.monitor_tau_D, .energy = thermalization.monitor_energy,
+    return {.tau_D = thermalization.monitor_tau_D, .sign = thermalization.monitor_sign, .energy = thermalization.monitor_energy,
             .orbital = thermalization.monitor_orbital, .n_batches = thermalization.monitor_n_batches};
 }
 
@@ -248,9 +248,9 @@ namespace input {
         std::fprintf(fp, "# measurements: n_batches = %zu  green_n_bins = %d  boundary_phonons = %d  split_sign = %d\n",
                      in.measurements.n_batches, in.measurements.green_n_bins, in.measurements.boundary_phonons,
                      in.measurements.split_sign ? 1 : 0);
-        std::fprintf(fp, "# thermalization: enabled = %d  monitor tau_D/energy/orbital = %d/%d/%d  monitor_n_batches = %zu  rhat_max = %.4f  "
+        std::fprintf(fp, "# thermalization: enabled = %d  monitor tau_D/sign/energy/orbital = %d/%d/%d/%d  monitor_n_batches = %zu  rhat_max = %.4f  "
                          "ESS bulk/tail per split chain = %.1f/%.1f  consecutive = %d  root = %d\n",
-                     t.enabled ? 1 : 0, t.monitor_tau_D ? 1 : 0, t.monitor_energy ? 1 : 0, t.monitor_orbital ? 1 : 0, t.monitor_n_batches,
+                     t.enabled ? 1 : 0, t.monitor_tau_D ? 1 : 0, t.monitor_sign ? 1 : 0, t.monitor_energy ? 1 : 0, t.monitor_orbital ? 1 : 0, t.monitor_n_batches,
                      t.rhat_max, t.min_bulk_ess_per_split_chain, t.min_tail_ess_per_split_chain, t.consecutive, t.root);
         std::fprintf(fp, "# thermalization: max_steps = %llu  checkpoint_interval = %llu  steps_per_cycle = %llu  cycles_per_check = %llu\n",
                      static_cast<unsigned long long>(t.max_steps), static_cast<unsigned long long>(t.checkpoint_interval),

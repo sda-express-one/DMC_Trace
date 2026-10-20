@@ -10,6 +10,7 @@ convergence_monitor::convergence_monitor(diagram_cfg * cfg, Options opt)
       scalar_names([&]{
           std::vector<std::string> n {"n_int", "n_ext", "Y2_tau", "rms_w", "rms_k"};
           if (opt.tau_D) { n.push_back("tau_D"); }
+          if (opt.sign) { n.push_back("sign"); }
           if (opt.energy) { n.push_back("energy"); }
           if (opt.orbital) { n.insert(n.end(), {"M_xx", "M_yy", "M_zz"}); }
           return n;
@@ -59,6 +60,7 @@ std::vector<double> convergence_monitor::scalars() const {
     const Eigen::Matrix3d & P {cfg->diagram_head->right_component};
     const double trace {P.trace()};
     const bool usable {std::isfinite(trace) && trace != 0.};     // a zero trace has probability zero
+    if (opt.sign) { out.push_back(usable ? (trace < 0. ? -1. : 1.) : 0.); }
     if (opt.energy) { out.push_back(usable ? energy_estimator->estimate() : 0.); }
     if (opt.orbital) {
         const Eigen::Matrix3d & U {cfg->diagram_head->baseWF};

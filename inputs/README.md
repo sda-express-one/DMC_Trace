@@ -109,7 +109,7 @@ in a row, or at `max_steps`. In the second case production runs anyway, and `<pr
 | key | default | meaning |
 |---|---|---|
 | `enabled` | true | false skips thermalization (not recommended) |
-| `monitor_tau_D`, `monitor_energy`, `monitor_orbital` | false, true, false | extra monitored scalars: τ_D (variable mode), the energy, the orbital fractions (only allowed at C = 0). n_int, n_ext, Y²/τ, rms w and rms k are always monitored. |
+| `monitor_tau_D`, `monitor_sign`, `monitor_energy`, `monitor_orbital` | false, true, true, false | extra monitored scalars: τ_D (variable mode), the diagram's sign ±1, the energy, the orbital fractions (only allowed at C = 0). n_int, n_ext, Y²/τ, rms w and rms k are always monitored. Without a sign problem the sign is the constant +1 and passes R̂ trivially. |
 | `monitor_n_batches` | 256 | batches of the monitor. It must be ≥ 4 × the ESS thresholds, otherwise the test can never pass. |
 | `rhat_max` | 1.01 | R̂ threshold |
 | `min_bulk_ess_per_split_chain`, `min_tail_ess_per_split_chain` | 50, 50 | ESS thresholds per split chain (each rank counts as 2) |
@@ -128,7 +128,7 @@ in a row, or at `max_steps`. In the second case production runs anyway, and `<pr
 
 The outputs are:
 - `<prefix>_<estimator>.dat` for every active estimator, from all chains combined;
-- `<prefix>_<estimator>_chains.dat` for gs_energy, eff_mass and eff_mass_uniaxial: each chain's (rank's) own value
+- `<prefix>_<estimator>_chains.dat` for gs_energy, eff_mass, eff_mass_uniaxial and avg_sign: each chain's (rank's) own value
   and jackknife error, with the mean over the chains and the χ²/dof of the chains around their weighted mean. A
   χ²/dof ≫ 1 flags a chain that disagrees with the others, e.g. a stuck or unthermalized one;
 - `<prefix>_thermalization.dat`, the R̂ history;
@@ -187,6 +187,7 @@ All defaults are 1. A larger weight on one side of a pair pays only where its pr
 | `eff_mass_uniaxial` | off | C = 0; fixed τ if p ≠ 0 |
 | `green_func` | off | variable length |
 | `green_trace` | off | variable length |
+| `avg_sign` | off | — (the average sign ⟨s⟩ = Σ W / Σ \|W\|: at fixed τ the signed over the absolute trace sum at τ_D, with variable length over τ_D ≥ `tau_min`) |
 
 ## Validation rules (checked before the run)
 - **LK parameters:** within the bounds listed under `config.model`.
