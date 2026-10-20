@@ -8,6 +8,7 @@
 #include <Eigen/Core>
 #include <simplemc/accs/batch_acc.hpp>
 #include <simplemc/accs/jackknife.hpp>
+#include <simplemc/mpi/mpi_fwd.hpp>
 #include "diagram/diagram_config.hpp"
 
 // Ground-state energy from the tau-scaling ("exact") estimator of E(tau) = -d ln G/dtau, which tends
@@ -69,6 +70,9 @@ struct gs_energy_measurement {
 
     // '#' metadata lines, then one line: E err
     void write(const std::string & path) const;
+
+    // several ranks (collective): merges the batches of every rank into acc and sums the counters, on every rank
+    friend void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, gs_energy_measurement & m);
 };
 
 #endif // !GS_ENERGY_HPP

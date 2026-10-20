@@ -1,4 +1,7 @@
 #include "measurements/qp_weights.hpp"
+#include <mpi.h>
+#include <simplemc/mpi/all_reduce.hpp>
+#include <simplemc/mpi/communicator.hpp>
 #include <array>
 #include <cassert>
 #include <cmath>
@@ -148,4 +151,11 @@ void qp_weights_measurement::write(const std::string & path) const {
         std::fprintf(f, "%d %llu %.15Le %.6Le\n", N, static_cast<unsigned long long>(hits[n]), r.Z[n], r.Z_error[n]);
     }
     std::fclose(f);
+}
+
+void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, qp_weights_measurement & m){
+    simplemc_mpi_collect(comm, m.acc);
+    simplemc::mpi::all_reduce_in_place(m.hits, MPI_SUM, comm);
+    simplemc::mpi::all_reduce_in_place(m.n_measured, MPI_SUM, comm);
+    simplemc::mpi::all_reduce_in_place(m.n_negative, MPI_SUM, comm);
 }

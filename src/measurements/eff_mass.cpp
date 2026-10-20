@@ -1,4 +1,7 @@
 #include "measurements/eff_mass.hpp"
+#include <mpi.h>
+#include <simplemc/mpi/all_reduce.hpp>
+#include <simplemc/mpi/communicator.hpp>
 #include <array>
 #include <cassert>
 #include <cmath>
@@ -29,7 +32,8 @@ eff_mass_measurement::eff_mass_measurement(diagram_cfg * cfg, std::array<double,
       acc(10, n_batches)
 {
     assert(cfg != nullptr);
-    assert(applicable());
+    // applicable() is checked in measure(): an inactive instance may be built for any band structure (main
+    // constructs every estimator; input::validate refuses an active one that does not apply)
 }
 
 Eigen::Vector3d eff_mass_measurement::pathMomentum() const {
@@ -37,6 +41,7 @@ Eigen::Vector3d eff_mass_measurement::pathMomentum() const {
 }
 
 void eff_mass_measurement::measure(){
+    assert(applicable());
     if (!tau_fixed && cfg->current_tau_length < tau_min) {
         return;
     }
@@ -142,4 +147,10 @@ void eff_mass_measurement::write(const std::string & path) const {
     std::fprintf(f, "# columns: m/m* err m*/m err   (isotropic part, tr(m/m*)/3)\n");
     std::fprintf(f, "%.15Le %.6Le %.15Le %.6Le\n", r.inv_mass_iso, r.inv_mass_iso_error, r.mass_ratio, r.mass_ratio_error);
     std::fclose(f);
+}
+
+void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, eff_mass_measurement & m){
+    simplemc_mpi_collect(comm, m.acc);
+    simplemc::mpi::all_reduce_in_place(m.n_measured, MPI_SUM, comm);
+    simplemc::mpi::all_reduce_in_place(m.n_negative, MPI_SUM, comm);
 }

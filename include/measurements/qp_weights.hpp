@@ -9,6 +9,7 @@
 #include <Eigen/Core>
 #include <simplemc/accs/batch_acc.hpp>
 #include <simplemc/accs/jackknife.hpp>
+#include <simplemc/mpi/mpi_fwd.hpp>
 #include "diagram/diagram_config.hpp"
 
 // Quasiparticle residue and N-phonon weights of the polaron at total momentum p, from the trace over all
@@ -95,6 +96,9 @@ private:
     int indexMeanN() const { return n_max + 1; }
     int indexResidue() const { return n_max + 2; }
     int indexSign() const { return n_max + 11; }
+
+    // several ranks (collective): merges the batches of every rank into acc and sums the counters, on every rank
+    friend void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, qp_weights_measurement & m);
 };
 
 #endif // !QP_WEIGHTS_HPP

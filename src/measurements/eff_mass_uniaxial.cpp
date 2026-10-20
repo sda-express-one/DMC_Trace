@@ -1,4 +1,7 @@
 #include "measurements/eff_mass_uniaxial.hpp"
+#include <mpi.h>
+#include <simplemc/mpi/all_reduce.hpp>
+#include <simplemc/mpi/communicator.hpp>
 #include <array>
 #include <cassert>
 #include <cmath>
@@ -28,10 +31,12 @@ eff_mass_uniaxial_measurement::eff_mass_uniaxial_measurement(diagram_cfg * cfg, 
       acc(31, n_batches)
 {
     assert(cfg != nullptr);
-    assert(applicable());
+    // applicable() is checked in measure(): an inactive instance may be built for any band structure (main
+    // constructs every estimator; input::validate refuses an active one that does not apply)
 }
 
 void eff_mass_uniaxial_measurement::measure(){
+    assert(applicable());
     if (!tau_fixed && cfg->current_tau_length < tau_min) {
         return;
     }
@@ -177,4 +182,10 @@ void eff_mass_uniaxial_measurement::write(const std::string & path) const {
                  r.inv_mass_par, r.inv_mass_par_error, r.inv_mass_perp, r.inv_mass_perp_error,
                  r.mass_ratio_par, r.mass_ratio_par_error, r.mass_ratio_perp, r.mass_ratio_perp_error);
     std::fclose(f);
+}
+
+void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, eff_mass_uniaxial_measurement & m){
+    simplemc_mpi_collect(comm, m.acc);
+    simplemc::mpi::all_reduce_in_place(m.n_measured, MPI_SUM, comm);
+    simplemc::mpi::all_reduce_in_place(m.n_negative, MPI_SUM, comm);
 }

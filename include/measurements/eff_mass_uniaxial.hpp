@@ -8,6 +8,7 @@
 #include <Eigen/Core>
 #include <simplemc/accs/batch_acc.hpp>
 #include <simplemc/accs/jackknife.hpp>
+#include <simplemc/mpi/mpi_fwd.hpp>
 #include "diagram/diagram_config.hpp"
 
 // Polaron effective masses of the uniaxial LK model, C = 0 (check with applicable(); A = B is included and
@@ -111,6 +112,9 @@ struct eff_mass_uniaxial_measurement {
     // '#' metadata lines with the orbital fractions, per-orbital tensors, velocities and C, then one line with
     // the pooled masses
     void write(const std::string & path) const;
+
+    // several ranks (collective): merges the batches of every rank into acc and sums the counters, on every rank
+    friend void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, eff_mass_uniaxial_measurement & m);
 };
 
 #endif // !EFF_MASS_UNIAXIAL_HPP

@@ -1,4 +1,7 @@
 #include "measurements/gs_energy.hpp"
+#include <mpi.h>
+#include <simplemc/mpi/all_reduce.hpp>
+#include <simplemc/mpi/communicator.hpp>
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -82,4 +85,9 @@ void gs_energy_measurement::write(const std::string & path) const {
     std::fprintf(f, "# columns: E err\n");
     std::fprintf(f, "%.15Le %.6Le\n", r.energy, r.energy_error);
     std::fclose(f);
+}
+
+void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, gs_energy_measurement & m){
+    simplemc_mpi_collect(comm, m.acc);
+    simplemc::mpi::all_reduce_in_place(m.n_measured, MPI_SUM, comm);
 }

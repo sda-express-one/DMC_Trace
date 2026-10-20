@@ -8,6 +8,7 @@
 #include <Eigen/Core>
 #include <simplemc/accs/batch_acc.hpp>
 #include <simplemc/accs/jackknife.hpp>
+#include <simplemc/mpi/mpi_fwd.hpp>
 #include "diagram/diagram_config.hpp"
 
 // Polaron effective mass and group velocity at total momentum p, from the sampling at p alone. Valid
@@ -99,6 +100,9 @@ struct eff_mass_measurement {
 
     // '#' metadata lines, then the scalar m/m* and m*/m, the tensor, v and C
     void write(const std::string & path) const;
+
+    // several ranks (collective): merges the batches of every rank into acc and sums the counters, on every rank
+    friend void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, eff_mass_measurement & m);
 };
 
 #endif // !EFF_MASS_HPP
