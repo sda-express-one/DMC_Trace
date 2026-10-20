@@ -8,9 +8,13 @@
 #include "comp_method/vertex_coupling.hpp"
 #include "comp_method/weight_computation.hpp"
 #include "updates/dmc_update_set.hpp"
+#include "utils/numerical.hpp"
 
 run_input::run_input(){
     for (const std::string_view name : update_names) { update_weights[std::string {name}] = 1.; }
+    for (const std::string_view name : measurement_names) {
+        measurements_active[std::string {name}] = name == "gs_energy" || name == "qp_weights";
+    }
 }
 
 std::vector<PhononMode> run_input::phononModes() const {
@@ -63,6 +67,7 @@ namespace {
         simplemc_save_input_config(s["config"], in);
         simplemc::simplemc_save_input_config(s["params"], params);
         for (const auto & [name, w] : in.update_weights) { s["updates"][name].save_at("weight", w); }
+        for (const auto & [name, a] : in.measurements_active) { s["measurements"][name].save_at("is_active", a); }
     }
 }
 
@@ -129,6 +134,23 @@ namespace input {
 
         require(!in.output.prefix.empty(), "output: prefix non-empty");
 
+        // estimators: the conditions their constructors and measure() only assert
+        const auto active {[&](std::string_view name){
+            const auto it {in.measurements_active.find(std::string {name})};
+            return it != in.measurements_active.end() && it->second;
+        }};
+        for (const auto & [name, a] : in.measurements_active) {
+            require(contains(measurement_names, name), "measurements: unknown estimator '" + name + "'");
+        }
+        const bool p_zero {d.p[0] == 0. && d.p[1] == 0. && d.p[2] == 0.};
+        require(!active("eff_mass") || (numerical::isEqual(m.A_LK, m.B_LK) && numerical::isEqual(m.C_LK, 0.)),
+                "measurements: eff_mass requires A_LK == B_LK and C_LK == 0 (use eff_mass_uniaxial for C_LK == 0)");
+        require(!active("eff_mass_uniaxial") || m.C_LK == 0., "measurements: eff_mass_uniaxial requires C_LK == 0");
+        require(!(active("eff_mass") || active("eff_mass_uniaxial")) || p_zero || d.tau_fixed,
+                "measurements: eff_mass at p != 0 requires tau_fixed (variable length: valid at p = 0 only)");
+        require(!(active("green_func") || active("green_trace")) || !d.tau_fixed,
+                "measurements: green_func and green_trace require variable length (no tau binning at fixed tau_D)");
+
         // update weights
         bool any {false}, any_length {false};
         for (const auto & [name, w] : in.update_weights) {
@@ -162,15 +184,11 @@ namespace input {
 
     void load(const std::filesystem::path & path, simplemc::simulation_params & params, run_input & in){
         simplemc::load_json_file(path, [&](const simplemc::json_serializer & s){
-            // unknown keys: compared with the complete default file; "measurements" belongs to the measurement set
+            // unknown keys: compared with the complete default file
             simplemc::json_serializer ref;
             save(ref, simplemc::simulation_params {}, run_input {});
-            ref.root()["measurements"] = nlohmann::json::object();
             std::vector<std::string> unknown;
-            for (const auto & [key, value] : s.root().items()) {
-                if (!ref.root().contains(key)) { unknown.push_back("/" + key); }
-                else if (key != "measurements" && value.is_object()) { unknownKeys(value, ref.root().at(key), "/" + key, unknown); }
-            }
+            unknownKeys(s.root(), ref.root(), "", unknown);
             if (!unknown.empty()) {
                 std::string msg {"unknown keys in " + path.string() + ":"};
                 for (const auto & k : unknown) { msg += " " + k; }
@@ -183,6 +201,12 @@ namespace input {
                 const auto u {s["updates"]};
                 for (const std::string_view name : update_names) {
                     if (u.has(name)) { u[name].try_load_at("weight", in.update_weights[std::string {name}]); }
+                }
+            }
+            if (s.has("measurements")) {
+                const auto ms {s["measurements"]};
+                for (const std::string_view name : measurement_names) {
+                    if (ms.has(name)) { ms[name].try_load_at("is_active", in.measurements_active[std::string {name}]); }
                 }
             }
         });
@@ -227,6 +251,11 @@ namespace input {
         for (const std::string_view name : update_names) {
             const auto it {in.update_weights.find(std::string {name})};
             std::fprintf(fp, " %.*s = %g", static_cast<int>(name.size()), name.data(), it == in.update_weights.end() ? 1. : it->second);
+        }
+        std::fprintf(fp, "\n# active estimators:");
+        for (const std::string_view name : measurement_names) {
+            const auto it {in.measurements_active.find(std::string {name})};
+            if (it != in.measurements_active.end() && it->second) { std::fprintf(fp, " %.*s", static_cast<int>(name.size()), name.data()); }
         }
         std::fprintf(fp, "\n# output: prefix = %s\n", in.output.prefix.c_str());
     }

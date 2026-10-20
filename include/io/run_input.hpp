@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <map>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <simplemc/mc/simulation_params.hpp>
 #include <simplemc/random/splitmix64.hpp>
@@ -24,15 +25,22 @@
 //                       "measurements": {...}, "thermalization": {...}, "output": {...} },   <- run_input
 //     "params":       { simplemc::simulation_params of the production run },
 //     "updates":      { "add_int_ph": {"weight": 1.0}, ... },        <- run_input::update_weights
-//     "measurements": { "<name>": {"is_active": true}, ... }         <- simplemc::measurement_set (main)
+//     "measurements": { "gs_energy": {"is_active": true}, ... }      <- run_input::measurements_active
 //   }
 //
 // Every key is optional: a missing one keeps its default below (input::writeDefault writes the complete file).
 // A key that is not known is an error (input::load), so a typo cannot silently leave a default in place.
 // Every rank reads the same file: nothing is broadcast.
 //
+// The "updates" and "measurements" blocks have simplemc's own entry format ({"weight": w}, {"is_active": b}), but
+// are read here, tolerantly (simplemc's loader requires every registered name to be present).
+//
 // Order of use: input::load -> input::applyGlobals (before any measurement is constructed: eff_mass* capture
 // A_LK, B_LK at construction) -> build the diagram -> makeUpdateSet (updates/update_set.hpp) with the weights.
+// the production estimators, in the order of main's measurement set: the keys of the "measurements" block
+inline constexpr std::array<std::string_view, 6> measurement_names {
+    "gs_energy", "qp_weights", "eff_mass", "eff_mass_uniaxial", "green_func", "green_trace"};
+
 struct run_input {
     struct Model {
         double A_LK {1.};                       // A > 0, B > 0, -A/2 - B < C < A + B
@@ -104,6 +112,7 @@ struct run_input {
     Thermalization thermalization;
     Output output;
     std::map<std::string, double> update_weights;   // every name of update_names, set by the constructor
+    std::map<std::string, bool> measurements_active; // every name of measurement_names: gs_energy and qp_weights on
 
     run_input();
 
@@ -122,11 +131,11 @@ namespace input {
     // Sets the global LKMatrix and Coupling::Parameters. Once, before any measurement is constructed.
     void applyGlobals(const run_input & in);
 
-    // Reads "config", "params" and "updates" (weights) from the file and validates. "measurements" is left to
-    // simplemc::load_json_input_config once the measurement set exists. Unknown keys throw.
+    // Reads "config", "params", "updates" (weights) and "measurements" (is_active) from the file and validates.
+    // Unknown keys throw.
     void load(const std::filesystem::path & path, simplemc::simulation_params & params, run_input & in);
 
-    // Writes the complete file (config, params, updates) with the given values - the defaults if called with
+    // Writes the complete file (config, params, updates, measurements) with the given values - the defaults if called with
     // default-constructed arguments.
     void write(const std::filesystem::path & path, const simplemc::simulation_params & params, const run_input & in);
     void writeDefault(const std::filesystem::path & path);
