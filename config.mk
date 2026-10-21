@@ -3,7 +3,9 @@
 # Defaults are those of the development laptop. On another machine either
 #   - put the overrides in config.local.mk next to this file (git-ignored, read first), e.g.
 #         SIMPLEMC_PREFIX = /opt/simplemc
+#         SIMPLEMC_LIB    = /opt/simplemc/lib64      (only if the automatic lib/lib64 choice is wrong)
 #         EIGEN_INC       = $(EBROOTEIGEN)/include
+#         FMT_LIB         = $(EBROOTFMT)/lib64
 #   - or pass them on the command line: make SIMPLEMC_PREFIX=/opt/simplemc
 # Every variable here is set with ?=, so either way wins over these defaults.
 #
@@ -18,8 +20,11 @@ ifeq ($(origin CXX),default)
     CXX = mpic++
 endif
 
-# simplemc install prefix: headers in include/simplemc, libsimplemc-*.a in lib
+# simplemc install prefix: headers in include/simplemc
 SIMPLEMC_PREFIX ?= $(HOME)/.local
+# directory of libsimplemc-*.a: CMake installs to lib or lib64 depending on the system (GNUInstallDirs); found
+# automatically (lib64 if the libraries are there, else lib), or set it explicitly
+SIMPLEMC_LIB ?= $(if $(wildcard $(SIMPLEMC_PREFIX)/lib64/libsimplemc-utils.a),$(SIMPLEMC_PREFIX)/lib64,$(SIMPLEMC_PREFIX)/lib)
 # Eigen 3 headers (the directory containing Eigen/)
 EIGEN_INC ?= /usr/include/eigen3
 # nlohmann/json headers (the directory containing nlohmann/); empty: the compiler's default search path
@@ -28,6 +33,6 @@ JSON_INC ?=
 FMT_LIB ?= /usr/local/lib
 
 EXTERNAL_INCLUDES = -isystem $(SIMPLEMC_PREFIX)/include -isystem $(EIGEN_INC) $(if $(JSON_INC),-isystem $(JSON_INC))
-EXTERNAL_LIBS = -L$(SIMPLEMC_PREFIX)/lib -Wl,-rpath=$(SIMPLEMC_PREFIX)/lib \
+EXTERNAL_LIBS = -L$(SIMPLEMC_LIB) -Wl,-rpath=$(SIMPLEMC_LIB) \
                 -Wl,--start-group -lsimplemc-mpi -lsimplemc-numeric -lsimplemc-serialize-json -lsimplemc-utils -Wl,--end-group \
                 $(if $(FMT_LIB),-L$(FMT_LIB)) -lfmt
