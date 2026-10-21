@@ -6,6 +6,7 @@
 #         SIMPLEMC_LIB    = /opt/simplemc/lib64      (only if the automatic lib/lib64 choice is wrong)
 #         EIGEN_INC       = $(EBROOTEIGEN)/include
 #         FMT_LIB         = $(EBROOTFMT)/lib64
+#         MPICXX          = mpiicpc                  (only if mpicxx is not the wrapper you want)
 #   - or pass them on the command line: make SIMPLEMC_PREFIX=/opt/simplemc
 # Every variable here is set with ?=, so either way wins over these defaults.
 #
@@ -14,11 +15,12 @@
 
 -include $(dir $(lastword $(MAKEFILE_LIST)))config.local.mk
 
-# MPI compiler wrapper (OpenMPI or MPICH; GCC >= 13 underneath for C++23). make predefines CXX = g++, so ?= would
-# never apply: replace only that built-in default, keep any value from the command line, environment or local file.
-ifeq ($(origin CXX),default)
-    CXX = mpic++
-endif
+# MPI C++ compiler wrapper: mpicxx exists in OpenMPI, MPICH and Intel MPI (GCC >= 13 underneath for C++23). The build
+# always compiles and links with it: CXX is set from MPICXX, not taken from the environment, because cluster compiler
+# modules commonly export CXX as the serial compiler (g++, icpx), which compiles (mpi.h is on CPATH) but then fails to
+# link the MPI library. Override MPICXX, not CXX (e.g. MPICXX = mpiicpc).
+MPICXX ?= mpicxx
+CXX = $(MPICXX)
 
 # simplemc install prefix: headers in include/simplemc
 SIMPLEMC_PREFIX ?= $(HOME)/.local
