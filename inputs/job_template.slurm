@@ -18,7 +18,7 @@
 #SBATCH --ntasks-per-node=48         # one rank per physical core: 2 sockets x 24 cores
 #SBATCH --cpus-per-task=1
 #SBATCH --hint=nomultithread         # physical cores only, no hyperthread siblings
-#SBATCH --time=3-00:00:00              # > params.max_time + ~30 min
+#SBATCH --time=1-00:00:00              # > params.max_time + ~30 min
 ##SBATCH --partition=PARTITION       # cluster-specific: remove one '#' and set it
 ##SBATCH --qos=QOS                   # cluster-specific: remove one '#' and set it
 #SBATCH --output=%x_%j.log
@@ -44,11 +44,13 @@ ldd "$DMC/bin/diagramc" | grep -E "not found" && { echo "missing libraries: chec
 module list 2>&1
 
 export OMP_NUM_THREADS=1             # the code is not threaded
+
+mpirun -np "$SLURM_NTASKS" "$DMC/bin/diagramc" input.json
 # Intel MPI under srun may need the Slurm PMI library (see the cluster documentation), e.g.
 #   export I_MPI_PMI_LIBRARY=/path/to/libpmi2.so
 # if all ranks report "1 chain(s)", MPI is not connected to Slurm: set it, or use the mpirun line instead
-mpirun -np --cpu-bind=cores "$DMC/bin/diagramc" input.json
-# mpirun -np "$SLURM_NTASKS" "$DMC/bin/diagramc" input.json
+
+# srun --cpu-bind=cores "$DMC/bin/diagramc" input.json 
 status=$?
 
 # 0: ok; 2: an estimator could not be written; 3: production skipped (time budget used up by the thermalization)
