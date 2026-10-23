@@ -11,6 +11,12 @@
 // Without an argument, or with a file that does not exist, the root writes the default input to that path
 // (input.json without an argument) and the program exits.
 //
+// Checkpoint/restart (io/checkpoint.hpp): with checkpoint.enabled every rank writes
+// <prefix>_checkpoint_rank<r>.msgpack after the thermalization, every checkpoint.interval seconds of production and at
+// its end. A job with checkpoint.restart = true and the same number of ranks continues from those files: no
+// thermalization, another params.max_steps of production (per job) within its own time budget, and the estimators keep
+// accumulating, so the outputs cover all jobs.
+//
 // Wall time: params.max_time is the budget of the WHOLE job (default 84600 s = 23 h 30 min, input::defaultParams).
 // The thermalization is ended collectively at the first R-hat checkpoint past it; the production gets what is left
 // (skipped, exit code 3, if less than a minute). <prefix>_run.dat records the budget and why each phase ended.
@@ -46,8 +52,10 @@
 #include <simplemc/random/xoshiro256.hpp>
 #include "diagram/diagram_builder.hpp"
 #include "diagram/diagram_config.hpp"
+#include "diagram/diagram_io.hpp"
 #include "diagram/phonon_manager.hpp"
 #include "diagram/vertex_manager.hpp"
+#include "io/checkpoint.hpp"
 #include "io/run_input.hpp"
 #include "measurements/convergence_monitor.hpp"
 #include "measurements/avg_sign.hpp"
@@ -207,19 +215,58 @@ namespace {
             input::print(in, stdout);
         }
 
-        // 2. chain, start, updates
+        // 2. chain, start (or the checkpointed diagram), updates
         Chain chain(in, rank);
         diagram_cfg & cfg {chain.cfg};
-        start(chain, in, rank);
+        const bool restart {in.checkpoint.restart};
+        const std::filesystem::path ckpt {checkpoint::path(in.output.prefix, rank)};
+        checkpoint::Meta meta;          // this chain's: carried across jobs
+        if (restart) {
+            // every rank needs its own file, written by a job with the same number of ranks and an input whose
+            // model, diagram and estimator settings are unchanged (collective checks: all ranks fail together)
+            int ok {std::filesystem::exists(ckpt) ? 1 : 0};
+            simplemc::mpi::all_reduce_in_place(ok, MPI_MIN, comm);
+            if (ok == 0) {
+                throw std::runtime_error("checkpoint.restart: missing checkpoint file(s) " + in.output.prefix + "_checkpoint_rank*.msgpack "
+                                         "(rank " + std::to_string(rank) + ": " + (std::filesystem::exists(ckpt) ? "found" : "missing") + ")");
+            }
+            DiagramState saved;
+            checkpoint::readHeader(ckpt, meta, saved);
+            std::string why;
+            if (meta.format != 1) { why = "unknown checkpoint format"; }
+            else if (meta.n_ranks != comm.size()) {
+                why = "written by " + std::to_string(meta.n_ranks) + " ranks, this job has " + std::to_string(comm.size());
+            }
+            else if (meta.rank != rank) { why = "the file belongs to rank " + std::to_string(meta.rank); }
+            else if (meta.fingerprint != input::fingerprint(in)) {
+                why = "the input's model, diagram or measurement settings differ from the checkpointed run's";
+            }
+            ok = why.empty() ? 1 : 0;
+            simplemc::mpi::all_reduce_in_place(ok, MPI_MIN, comm);
+            if (ok == 0) {
+                throw std::runtime_error("checkpoint.restart: cannot continue" + (why.empty() ? std::string {" (another rank failed)"} : ": " + why));
+            }
+            const numerical::SanitizeReport rep {restoreDiagram(cfg, saved)};
+            const double trace {cfg.diagram_head->right_component.trace()};
+            if (!rep.clean() || !std::isfinite(trace) || trace == 0.) {
+                throw std::runtime_error("checkpoint.restart: the restored diagram is not clean (rank " + std::to_string(rank) + ")");
+            }
+            cfg.n_negative = meta.n_negative;
+            ++meta.jobs;
+        }
+        else {
+            start(chain, in, rank);
+        }
         dmc_update_set us {makeUpdateSet(&cfg, &chain.rng, in.update_weights)};
         simplemc::metropolis_kernel kernel {us};
 
-        // 3. thermalization under R-hat control, ended also (collectively, by the root's clock) by the wall-time budget
+        // 3. thermalization under R-hat control, ended also (collectively, by the root's clock) by the wall-time budget;
+        //    skipped on a restart (the checkpointed chain is past it; its outcome comes from the checkpoint)
         const double budget {params.max_time};
-        bool thermalized {false}, therm_timed_out {false};
-        std::uint64_t therm_steps {0};
-        double therm_time {0.};
-        if (in.thermalization.enabled) {
+        bool thermalized {meta.thermalized}, therm_timed_out {meta.therm_timed_out};
+        std::uint64_t therm_steps {meta.therm_steps};
+        double therm_time {meta.therm_time};
+        if (in.thermalization.enabled && !restart) {
             simplemc::measurement_set therm {simplemc::measurement {convergence_monitor {&cfg, in.monitorOptions()}, "convergence"}};
             convergence_monitor & mon {therm.get<0>().value()};
             thermalization_control ctl {comm, mon.names(), mon.maxWindowBatches(), in.controlOptions()};
@@ -248,6 +295,16 @@ namespace {
             us.reset_counters();
             cfg.n_negative = 0;
         }
+        if (!restart) {
+            meta.n_ranks = comm.size();
+            meta.rank = rank;
+            meta.thermalization_enabled = in.thermalization.enabled;
+            meta.thermalized = thermalized;
+            meta.therm_timed_out = therm_timed_out;
+            meta.therm_steps = therm_steps;
+            meta.therm_time = therm_time;
+            meta.fingerprint = input::fingerprint(in);
+        }
 
         // 4. production: every estimator is built (fixed types), the input selects the active ones. Built after the
         //    start, so that eff_mass* capture the final tau_D of fixed-length runs.
@@ -263,26 +320,45 @@ namespace {
             simplemc::measurement {green_trace_measurement {&cfg, d.p, in.measurements.green_n_bins, in.measurements.boundary_phonons,
                                                             in.measurements.split_sign, nb}, "green_trace"},
             simplemc::measurement {avg_sign_measurement {&cfg, d.tau_min, d.tau_fixed, nb}, "avg_sign"}};
+        simplemc::simulation_stats stats;
+        if (restart) {
+            // the rest of the chain's state: rng, update counters, estimators' data, production stats so far; then the
+            // input's update weights and estimator selection, which may change between jobs
+            checkpoint::load(ckpt, chain.rng, us, ms, stats);
+            for (const auto & [name, w] : in.update_weights) { us.set_weight(name, w); }
+        }
         for (const auto & [name, active] : in.measurements_active) { ms.set_active(name, active); }
 
+        // checkpoints: the state of this rank's chain; written before the ranks are combined (the collect below
+        // merges them in place)
+        const auto save_checkpoint {[&](const char * phase, const simplemc::simulation_stats & st){
+            meta.phase = phase;
+            meta.n_negative = cfg.n_negative;
+            checkpoint::save(ckpt, chain.rng, us, ms, st, cfg, meta);
+        }};
+        if (in.checkpoint.enabled && !restart) { save_checkpoint("thermalized", stats); }
+
         // the production gets what is left of the budget, the same value on every rank (the root's clock); it has no
-        // collectives until the end, so ranks may stop at different step counts (the final collect merges them)
+        // collectives until the end, so ranks may stop at different step counts (the final collect merges them), and
+        // checkpoints are written per rank, every checkpoint.interval seconds
         double remaining {budget - (MPI_Wtime() - t0)};
         simplemc::mpi::broadcast(remaining, 0, comm);
         constexpr double min_production_time {60.};
         const bool produce {remaining >= min_production_time};
         simplemc::simulation_params prod {params};
         prod.max_time = std::max(remaining, 0.);
-        simplemc::simulation_stats stats;
+        if (in.checkpoint.enabled) { prod.checkpoint_after_time = in.checkpoint.interval; }
         std::uint64_t prod_steps {0};
         if (produce) {
             simplemc::progress_printer printer {progress("[production]", prod.max_steps, prod.max_time, root)};
             const simplemc::simulation_ctx ctx {simplemc::run(chain.rng, kernel, ms, prod, simplemc::run_callbacks {
                 .on_step = [&](const simplemc::simulation_ctx &){ cfg.countSign(); },
-                .on_cycle = [&](const simplemc::simulation_ctx & c){ printer(c); }})};
+                .on_cycle = [&](const simplemc::simulation_ctx & c){ printer(c); },
+                .on_checkpoint = [&](const simplemc::simulation_ctx & c){ save_checkpoint("production", stats + c); }})};
             prod_steps = ctx.steps_done;
             stats += ctx;
             if (root) { std::printf("\n"); }
+            if (in.checkpoint.enabled) { save_checkpoint("production", stats); }
         }
         else if (root) {
             std::printf("diagramc: WARNING - only %.0f s of the %.0f s wall-time budget left after thermalization: production "
@@ -330,15 +406,20 @@ namespace {
             if (f == nullptr) { throw std::runtime_error("cannot open " + run_path); }
             std::fprintf(f, "# diagramc run: %d chain(s), input %s\n", comm.size(), path.string().c_str());
             input::print(in, f);
+            if (restart) {
+                std::fprintf(f, "\n# restarted from the checkpoints %s_checkpoint_rank*.msgpack: job %d of these chains "
+                                "(the thermalization below is the original job's)", in.output.prefix.c_str(), meta.jobs);
+            }
             std::fprintf(f, "\n# thermalized: %s, %llu steps per chain, %.1f s\n",
-                         !in.thermalization.enabled ? "not checked (thermalization disabled)"
+                         !meta.thermalization_enabled && !in.thermalization.enabled ? "not checked (thermalization disabled)"
                          : thermalized ? "yes (R-hat passed)" : therm_timed_out ? "NO (wall-time budget reached)" : "NO (step cap reached)",
                          static_cast<unsigned long long>(therm_steps), therm_time);
-            std::fprintf(f, "# wall-time budget = %.0f s for the whole job; production limit = %.0f s; production: %s\n",
-                         budget, prod.max_time, prod_end);
+            std::fprintf(f, "# wall-time budget = %.0f s for the whole job; production limit = %.0f s; production: %s; "
+                            "%llu production steps per chain in this job\n",
+                         budget, prod.max_time, prod_end, static_cast<unsigned long long>(prod_steps));
             std::fprintf(f, "\n# production parameters (max_time: what was left of the budget)\n");
             simplemc::print(prod, f);
-            std::fprintf(f, "\n# production, summed over the chains\n");
+            std::fprintf(f, "\n# production, summed over the chains%s\n", restart ? " and over all jobs" : "");
             simplemc::print(stats, f);
             std::fprintf(f, "Negative-sign steps = %llu (fraction %.6g)\n", static_cast<unsigned long long>(n_negative),
                          stats.cumulative_steps > 0 ? static_cast<double>(n_negative) / static_cast<double>(stats.cumulative_steps) : 0.);

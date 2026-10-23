@@ -141,6 +141,34 @@ The outputs are:
 - `<prefix>_run.dat`, with the input, the run statistics, the negative-sign fraction and the update acceptances;
 - `<prefix>_input.json`, the full input actually used.
 
+## `config.checkpoint`: checkpoint and restart
+
+| key | default | meaning |
+|---|---|---|
+| `enabled` | true | every rank writes `<prefix>_checkpoint_rank<r>.msgpack`: after the thermalization, every `interval` seconds of production, and at its end |
+| `interval` | 3600 | seconds between production checkpoints (per rank) |
+| `restart` | false | continue from the checkpoint files of `output.prefix` instead of starting a new chain |
+
+Each file holds one chain's state: the rng, the diagram (its lines and momenta), the update counters, the
+estimators' accumulators and counters, and the production statistics so far. It is MessagePack, a few MB per rank
+and estimator, written atomically (temporary file + rename), so a job killed while writing keeps the previous
+checkpoint.
+
+**Continuing a run:** resubmit the same input with `"checkpoint": {"restart": true}`, in the same directory and with
+the **same number of ranks**.
+- The job skips the thermalization; the original job's outcome is kept in `run.dat`.
+- It runs another `params.max_steps` of production (counted per job) within its own time budget.
+- The estimators keep accumulating, so the output files cover all jobs.
+
+The restart is statistical: the diagram's cached quantities are rebuilt from its lines and momenta, so the
+continued chain matches an uninterrupted one up to rounding.
+
+**What may change between jobs:** `params`, `thermalization`, the update weights, `output`, `rng` (the saved rng is
+used), `checkpoint`, and which estimators are active (one switched on later starts empty). The model, the diagram
+settings and the estimators' settings (`config.model`, `config.diagram`, `config.measurements`) must stay the same;
+the job stops with a message otherwise, as it does when the number of ranks differs or a file is missing. A job
+killed during thermalization has no usable checkpoint yet and must be started again.
+
 ## `params`: the production run, and the wall-time budget of the whole job
 This is simplemc's `simulation_params`, with project defaults (`input::defaultParams()`) instead of simplemc's own.
 

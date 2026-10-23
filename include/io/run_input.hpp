@@ -105,6 +105,12 @@ struct run_input {
         std::string prefix {"dmc"};             // directory/stem of the files written by the estimators
     };
 
+    struct Checkpoint {
+        bool enabled {true};                    // write <prefix>_checkpoint_rank<r>.msgpack (one file per rank)
+        double interval {3600.};                // seconds between production checkpoints (per rank)
+        bool restart {false};                   // continue from the checkpoint files of output.prefix
+    };
+
     Model model;
     Diagram diagram;
     Start start;
@@ -112,6 +118,7 @@ struct run_input {
     Measurements measurements;
     Thermalization thermalization;
     Output output;
+    Checkpoint checkpoint;
     std::map<std::string, double> update_weights;   // every name of update_names, set by the constructor
     std::map<std::string, bool> measurements_active; // every name of measurement_names: gs_energy and qp_weights on
 
@@ -148,6 +155,11 @@ namespace input {
     void writeDefault(const std::filesystem::path & path);
 
     void print(const run_input & in, std::FILE * fp = stdout);
+
+    // What a checkpoint's saved state depends on - the model, the diagram settings and the estimators' settings - as
+    // a canonical JSON string; a restart requires it to be unchanged (params, thermalization, update weights, output,
+    // seed, checkpoint and the estimators' is_active may change between jobs).
+    std::string fingerprint(const run_input & in);
 }
 
 // simplemc input-config hooks (the "config" block); every key optional on load.
@@ -206,6 +218,11 @@ void simplemc_save_input_config(S s, const run_input & in){
     t.save_at("cycles_per_check", in.thermalization.cycles_per_check);
 
     s["output"].save_at("prefix", in.output.prefix);
+
+    auto ck {s["checkpoint"]};
+    ck.save_at("enabled", in.checkpoint.enabled);
+    ck.save_at("interval", in.checkpoint.interval);
+    ck.save_at("restart", in.checkpoint.restart);
 }
 
 template <simplemc::serializer S>
@@ -267,6 +284,12 @@ void simplemc_load_input_config(const S & s, run_input & in){
         t.try_load_at("cycles_per_check", in.thermalization.cycles_per_check);
     }
     if (s.has("output")) { s["output"].try_load_at("prefix", in.output.prefix); }
+    if (s.has("checkpoint")) {
+        const auto ck {s["checkpoint"]};
+        ck.try_load_at("enabled", in.checkpoint.enabled);
+        ck.try_load_at("interval", in.checkpoint.interval);
+        ck.try_load_at("restart", in.checkpoint.restart);
+    }
 }
 
 #endif // !RUN_INPUT_HPP

@@ -141,6 +141,7 @@ namespace input {
         }
 
         require(!in.output.prefix.empty(), "output: prefix non-empty");
+        require(std::isfinite(in.checkpoint.interval) && in.checkpoint.interval > 0., "checkpoint: interval > 0");
 
         // estimators: the conditions their constructors and measure() only assert
         const auto active {[&](std::string_view name){
@@ -266,5 +267,15 @@ namespace input {
             if (it != in.measurements_active.end() && it->second) { std::fprintf(fp, " %.*s", static_cast<int>(name.size()), name.data()); }
         }
         std::fprintf(fp, "\n# output: prefix = %s\n", in.output.prefix.c_str());
+        std::fprintf(fp, "# checkpoint: enabled = %d  interval = %.0f s  restart = %d\n", in.checkpoint.enabled ? 1 : 0,
+                     in.checkpoint.interval, in.checkpoint.restart ? 1 : 0);
+    }
+
+    std::string fingerprint(const run_input & in){
+        simplemc::json_serializer s;
+        simplemc_save_input_config(s, in);
+        const nlohmann::json & all {s.root()};
+        const nlohmann::json key {{"model", all.at("model")}, {"diagram", all.at("diagram")}, {"measurements", all.at("measurements")}};
+        return key.dump();
     }
 }

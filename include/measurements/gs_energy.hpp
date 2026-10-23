@@ -4,12 +4,14 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <vector>
 #include <Eigen/Core>
 #include <simplemc/accs/batch_acc.hpp>
 #include <simplemc/accs/jackknife.hpp>
 #include <simplemc/mpi/mpi_fwd.hpp>
+#include <simplemc/serialize/concepts.hpp>
 #include "diagram/diagram_config.hpp"
 
 // Ground-state energy from the tau-scaling ("exact") estimator of E(tau) = -d ln G/dtau, which tends
@@ -80,6 +82,21 @@ struct gs_energy_measurement {
 
     // several ranks (collective): merges the batches of every rank into acc and sums the counters, on every rank
     friend void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, gs_energy_measurement & m);
+
+    // checkpoint hooks (simplemc's persistent-state channel): the accumulator and the counters; the construction
+    // parameters come from the input (main checks that the input still matches the checkpoint)
+    template <simplemc::serializer S>
+    friend void simplemc_save(S s, const gs_energy_measurement & m){
+        s.save_at("acc", m.acc);
+        s.save_at("n_measured", m.n_measured);
+        s.save_at("n_negative", m.n_negative);
+    }
+    template <simplemc::serializer S>
+    friend void simplemc_load(const S & s, gs_energy_measurement & m){
+        s.load_at("acc", m.acc);
+        s.load_at("n_measured", m.n_measured);
+        s.load_at("n_negative", m.n_negative);
+    }
 };
 
 #endif // !GS_ENERGY_HPP

@@ -54,5 +54,7 @@ mpirun -np "$SLURM_NTASKS" "$DMC/bin/diagramc" input.json
 status=$?
 
 # 0: ok; 2: an estimator could not be written; 3: production skipped (time budget used up by the thermalization)
+# to continue the run in a new job: set "checkpoint": {"restart": true} in input.json and resubmit this script from
+# the same directory with the same number of ranks (see inputs/README.md, config.checkpoint)
 echo "diagramc exit code $status"
 exit $status

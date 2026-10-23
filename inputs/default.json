@@ -1,5 +1,10 @@
 {
     "config": {
+        "checkpoint": {
+            "enabled": true,
+            "interval": 3600.0,
+            "restart": false
+        },
         "diagram": {
             "max_external_lines": 8,
             "max_internal_lines": 200,

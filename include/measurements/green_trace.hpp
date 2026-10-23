@@ -4,12 +4,14 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <vector>
 #include <Eigen/Core>
 #include <simplemc/accs/batch_acc.hpp>
 #include <simplemc/accs/jackknife.hpp>
 #include <simplemc/mpi/mpi_fwd.hpp>
+#include <simplemc/serialize/concepts.hpp>
 #include "diagram/diagram_config.hpp"
 
 // Binned estimator of the trace of the Green function, tr G(p, tau) = sum_n G_nn(p, tau) - or, selecting
@@ -92,6 +94,28 @@ struct green_trace_measurement {
 
     // several ranks (collective): merges the batches of every rank into acc and sums the counters, on every rank
     friend void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, green_trace_measurement & m);
+
+    // checkpoint hooks (simplemc's persistent-state channel): the accumulator and the counters; the construction
+    // parameters come from the input (main checks that the input still matches the checkpoint)
+    template <simplemc::serializer S>
+    friend void simplemc_save(S s, const green_trace_measurement & m){
+        s.save_at("acc", m.acc);
+        s.save_at("hits", m.hits);
+        s.save_at("n_selected", m.n_selected);
+        s.save_at("n_negative", m.n_negative);
+        s.save_at("n_order0", m.n_order0);
+    }
+    template <simplemc::serializer S>
+    friend void simplemc_load(const S & s, green_trace_measurement & m){
+        s.load_at("acc", m.acc);
+        std::vector<std::uint64_t> hits;
+        s.load_at("hits", hits);
+        if (hits.size() != m.hits.size()) { throw std::runtime_error("checkpoint: hits of a different size (input changed?)"); }
+        m.hits = hits;
+        s.load_at("n_selected", m.n_selected);
+        s.load_at("n_negative", m.n_negative);
+        s.load_at("n_order0", m.n_order0);
+    }
 
 private:
     int histograms() const { return split_sign ? 2 : 1; }

@@ -7,6 +7,7 @@
 #include <string_view>
 #include <utility>
 #include <simplemc/mc/update_set.hpp>
+#include <simplemc/serialize/concepts.hpp>
 #include <simplemc/random/xoshiro256.hpp>
 #include "diagram/diagram_config.hpp"
 #include "updates/add_internal_ph.hpp"
@@ -40,6 +41,22 @@ inline constexpr std::array<std::pair<std::string_view, std::string_view>, 2> up
 
 // the updates that change tau_D: weight 0 in fixed-length runs
 inline constexpr std::array<std::string_view, 3> length_changing_updates {"chg_tau", "str_diagram", "scl_diagram"};
+
+// Checkpoint hooks for the updates, which simplemc stores under each update's "user" key next to its counters.
+// Only the SignCounter's count carries over from step to step: everything else in an update is staged by attempt()
+// and consumed by accept()/reject() in the same step (and PhononMomentum's normal draws come in pairs, four per draw,
+// so no spare value survives a step).
+template <simplemc::serializer S, typename U>
+    requires requires (const U & u) { u.sign.n_negative; }
+void simplemc_save(S s, const U & u){
+    s.save_at("n_negative", u.sign.n_negative);
+}
+
+template <simplemc::serializer S, typename U>
+    requires requires (U & u) { u.sign.n_negative; }
+void simplemc_load(const S & s, U & u){
+    s.load_at("n_negative", u.sign.n_negative);
+}
 
 // The set bound to one diagram and rng, with the given weights (a name missing from the map keeps weight 1),
 // the inverse pairs linked and the selection distribution built. Throws simplemc::simplemc_exception on
