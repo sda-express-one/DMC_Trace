@@ -25,7 +25,7 @@ std::vector<PhononMode> run_input::phononModes() const {
 
 diagram_builder::RandomDiagramSpec run_input::randomDiagramSpec() const {
     return {.n_internal_min = start.n_internal_min, .n_internal_max = start.n_internal_max,
-            .n_external_min = start.n_external_min, .n_external_max = start.n_external_max, .w_scale = start.w_scale};
+            .n_external_min = start.n_external_min, .n_external_max = start.n_external_max, .w_spread = start.w_spread};
 }
 
 convergence_monitor::Options run_input::monitorOptions() const {
@@ -115,7 +115,7 @@ namespace input {
                     "start: 0 <= n_internal_min <= n_internal_max <= max_internal_lines");
             require(0 <= st.n_external_min && st.n_external_min <= st.n_external_max && st.n_external_max <= d.max_external_lines,
                     "start: 0 <= n_external_min <= n_external_max <= max_external_lines");
-            require(st.w_scale > 0., "start: w_scale > 0");
+            require(st.w_spread > 0., "start: w_spread > 0");
         }
 
         const auto & ms {in.measurements};
@@ -242,8 +242,8 @@ namespace input {
                          "tau_min = %.10g  max lines int/ext = %d/%d\n",
                      d.p[0], d.p[1], d.p[2], d.mu, d.tau_max, d.tau_fixed ? 1 : 0, d.tau_D_start, d.tau_min,
                      d.max_internal_lines, d.max_external_lines);
-        std::fprintf(fp, "# start: random = %d  internal %d..%d  external %d..%d  w_scale = %.10g\n", in.start.random_start ? 1 : 0,
-                     in.start.n_internal_min, in.start.n_internal_max, in.start.n_external_min, in.start.n_external_max, in.start.w_scale);
+        std::fprintf(fp, "# start: random = %d  internal %d..%d  external %d..%d  w_spread = %.10g\n", in.start.random_start ? 1 : 0,
+                     in.start.n_internal_min, in.start.n_internal_max, in.start.n_external_min, in.start.n_external_max, in.start.w_spread);
         std::fprintf(fp, "# rng: seed = %llu\n", static_cast<unsigned long long>(in.rng.seed));
         std::fprintf(fp, "# measurements: n_batches = %zu  green_n_bins = %d  boundary_phonons = %d  split_sign = %d\n",
                      in.measurements.n_batches, in.measurements.green_n_bins, in.measurements.boundary_phonons,

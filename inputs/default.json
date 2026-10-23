@@ -45,7 +45,7 @@
             "n_internal_max": 0,
             "n_internal_min": 0,
             "random_start": false,
-            "w_scale": 1.0
+            "w_spread": 1.0
         },
         "thermalization": {
             "checkpoint_interval": 1000000,

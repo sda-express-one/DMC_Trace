@@ -52,9 +52,9 @@ struct Chain {
     {
         simplemc::xoshiro256ss init {seed + 7777ULL};
         if (high_start) {
-            // well above the target (alpha omega L = 6 lines): 20-30 internal, 0-3 external lines, wider momenta
+            // well above the target (alpha omega L = 6 lines): 40-60 internal, 0-3 external lines, momenta 1.5 x the physical spread
             diagram_builder::randomDiagram(d.cfg, init, {0., 0., 0.}, L,
-                                           {.n_internal_min = 20, .n_internal_max = 30, .n_external_min = 0, .n_external_max = 3, .w_scale = 1.5});
+                                           {.n_internal_min = 40, .n_internal_max = 60, .n_external_min = 0, .n_external_max = 3, .w_spread = 1.5});
         }
         else {
             diagram_builder::reset(d.cfg, L);
@@ -115,7 +115,7 @@ static void in_process(test::Checks & check){
     const bool early_fail {!h.front().pass};
     const bool tail_passes {declared_at > 0 && h.size() >= 3 && h.back().pass && h[h.size() - 2].pass && h[h.size() - 3].pass};
     check(early_fail && tail_passes,
-          "%d chains (3 from order 0, 3 from 20-30-line starts): first checkpoint fails (worst R-hat: %s %.3f), thermalized at checkpoint %d "
+          "%d chains (3 from order 0, 3 from 40-60-line starts): first checkpoint fails (worst R-hat: %s %.3f), thermalized at checkpoint %d "
           "(%ld steps per chain) after 3 consecutive passes",
           n_chains, ctl.names()[worst].c_str(), h.front().results[worst].rhat, declared_at, declared_at * cycles_per_checkpoint * steps_per_cycle);
 

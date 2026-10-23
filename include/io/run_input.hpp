@@ -69,7 +69,7 @@ struct run_input {
         int n_internal_max {0};
         int n_external_min {0};
         int n_external_max {0};
-        double w_scale {1.};
+        double w_spread {1.};                   // momentum spread: std of |w| = w_spread / sqrt(span), 1 = the add proposal
     };
 
     struct Rng {
@@ -178,7 +178,7 @@ void simplemc_save_input_config(S s, const run_input & in){
     st.save_at("n_internal_max", in.start.n_internal_max);
     st.save_at("n_external_min", in.start.n_external_min);
     st.save_at("n_external_max", in.start.n_external_max);
-    st.save_at("w_scale", in.start.w_scale);
+    st.save_at("w_spread", in.start.w_spread);
 
     s["rng"].save_at("seed", in.rng.seed);
 
@@ -238,7 +238,7 @@ void simplemc_load_input_config(const S & s, run_input & in){
         st.try_load_at("n_internal_max", in.start.n_internal_max);
         st.try_load_at("n_external_min", in.start.n_external_min);
         st.try_load_at("n_external_max", in.start.n_external_max);
-        st.try_load_at("w_scale", in.start.w_scale);
+        st.try_load_at("w_spread", in.start.w_spread);
     }
     if (s.has("rng")) { s["rng"].try_load_at("seed", in.rng.seed); }
     if (s.has("measurements")) {

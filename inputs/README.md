@@ -77,13 +77,19 @@ random diagram if `random_start` is true. Different starts are what make the R̂
 |---|---|---|
 | `random_start` | false | random starting diagrams on the odd ranks |
 | `n_internal_min`, `n_internal_max` | 0, 0 | number of internal lines, drawn uniformly in this range |
-| `n_external_min`, `n_external_max` | 0, 0 | number of external lines. **Keep both at 0** (see the warning below). |
-| `w_scale` | 1 | standard deviation of each phonon momentum component. Keep it at most about 2–3 × √(2mω), e.g. ≈ 0.1 for AlAs. |
+| `n_external_min`, `n_external_max` | 0, 0 | number of external lines, drawn uniformly in this range (e.g. 0–3) |
+| `w_spread` | 1 | momentum spread, relative to the physical one: each line's \|w\| is half-normal with standard deviation `w_spread`/√(span), the distribution the add updates propose. 1 is exactly that; 2 gives 4× its variance. Dimensionless, the same for every model. (It replaced the absolute `w_scale`; an input still containing `w_scale` is rejected.) |
 
-**Warning:** random external lines with large momenta can lock each other into a configuration the chain never
-leaves. R̂ then never passes, and E₀ comes out wrong. See `markdown_notes/external_line_traps.md`. The external
-sector is filled by `add_ext_ph` during thermalization anyway. For internal lines, use a range above the expected
-order, roughly α ω τ_D lines, so that the chains start on both sides of the target.
+Every line is drawn the way the add updates propose one:
+- spans from Exp(ω): an internal line from a uniform creation time; an external line, annihilation first, from the
+  two ends of the diagram;
+- momenta with the `w_spread` scale above.
+
+The starts are overdispersed in the number of lines, but every line is physical. Earlier the builder drew uniform
+times and absolute momenta, and its external lines could lock each other into a configuration the chain never left
+(`markdown_notes/external_line_traps.md`); with physical lines those cases thermalize. For the line counts, use a
+range above the expected order, roughly α ω τ_D lines, so that the chains start on both sides of the target;
+`w_spread` of about 1–2.
 
 ## `config.rng`
 

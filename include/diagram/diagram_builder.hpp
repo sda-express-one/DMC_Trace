@@ -48,16 +48,23 @@ namespace diagram_builder {
     numerical::SanitizeReport finalize(diagram_cfg & cfg);
 
     // Ranges of a random diagram. Counts are drawn uniformly in [min, max] (clamped to what the managers and
-    // the vertex pool can hold), times uniformly in (0, tau_D), every phonon momentum component from
-    // N(0, w_scale^2), modes uniformly. Choose the ranges wide compared with the target distribution (orders
-    // from 0 up to a few times the expected number of lines, ~ alpha omega tau_D; w_scale a few times
-    // sqrt(2 m omega)), so independent chains start overdispersed.
+    // the vertex pool can hold). Every line is drawn the way the add updates propose one, so that a start is
+    // overdispersed in its number of lines but made of physical lines (a far-out start can be a metastable trap
+    // no update leaves: markdown_notes/external_line_traps.md):
+    //   - mode uniform; its omega sets the span scale;
+    //   - internal line: t_cre uniform in (0, tau_D), t_ann = t_cre + Exp(omega) (redrawn while beyond tau_D);
+    //   - external line (as add_ext_ph): t_ann = Exp(omega), t_cre = tau_D - Exp(omega), annihilation first only
+    //     (creation-first lines span more than tau_D and weigh <= e^{-omega tau_D});
+    //   - momentum from the add proposal proposal::PhononMomentum for the line span l, |w| half-normal with
+    //     std w_spread / sqrt(l): w_spread = 1 is exactly that proposal, w_spread = 2 four times its variance.
+    // Choose the count ranges wide compared with the target (from 0 up to a few times the expected number of
+    // lines, ~ alpha omega tau_D), so independent chains start on both sides of it.
     struct RandomDiagramSpec {
         int n_internal_min {0};
         int n_internal_max {0};
         int n_external_min {0};
         int n_external_max {0};
-        double w_scale {1.};
+        double w_spread {1.};
     };
 
     // One random diagram: reset + random lines (times redrawn on a tie) + assignMomenta + finalize. Its trace

@@ -5,6 +5,7 @@
 #include <random>
 #include "diagram/phonon_manager.hpp"
 #include "diagram/vertex_manager.hpp"
+#include "utils/prop_distribs.hpp"
 
 namespace diagram_builder {
 
@@ -157,19 +158,31 @@ namespace diagram_builder {
         std::uniform_int_distribution<int> draw_ext {std::min(spec.n_external_min, max_ext), std::min(spec.n_external_max, max_ext)};
         const int n_ext {draw_ext(rng)};
 
+        assert(spec.w_spread > 0.);
         std::uniform_real_distribution<double> draw_t {0., tau_D};
-        std::normal_distribution<double> draw_w {0., spec.w_scale};
+        std::uniform_real_distribution<double> unif {0., 1.};
         std::uniform_int_distribution<int> draw_mode {0, cfg.phonon_mode_manager->num_phonon_modes - 1};
-        const auto random_w {[&]{ return std::array<double, 3> {draw_w(rng), draw_w(rng), draw_w(rng)}; }};
+        const proposal::PhononMomentum w_proposal {.shape = 1. / (spec.w_spread * spec.w_spread)};
+        const auto draw_exp {[&](double omega){ return -std::log(1. - unif(rng)) / omega; }};
 
+        // times are redrawn while the line does not fit (beyond tau_D, or creation first for an external line) or
+        // ties with an existing vertex; a line that does not fit in max_line_draws draws (tau_D << 1/omega) is left out
+        constexpr int max_line_draws {100000};
         for (int n {0}; n < n_int + n_ext; ++n) {
             const bool internal {n < n_int};
-            // a draw fails only on a tie with an existing vertex (or t = 0): redraw the times
-            for (bool added {false}; !added;) {
-                double t1 {draw_t(rng)}, t2 {draw_t(rng)};
-                if (internal && t2 < t1) { std::swap(t1, t2); }
-                added = internal ? addInternalLine(cfg, t1, t2, random_w(), draw_mode(rng))
-                                 : addExternalLine(cfg, t1, t2, random_w(), draw_mode(rng));
+            const int mode {draw_mode(rng)};
+            const double omega {cfg.phonon_mode_manager->phonon_mode_pool[static_cast<std::size_t>(mode)].phonon_energy};
+            for (int draw {0}; draw < max_line_draws; ++draw) {
+                if (internal) {
+                    const double t_cre {draw_t(rng)}, t_ann {t_cre + draw_exp(omega)};
+                    if (!(t_ann < tau_D)) { continue; }
+                    if (addInternalLine(cfg, t_cre, t_ann, w_proposal.draw(rng, t_ann - t_cre), mode)) { break; }
+                }
+                else {
+                    const double t_ann {draw_exp(omega)}, t_cre {tau_D - draw_exp(omega)};
+                    if (!(t_ann < t_cre)) { continue; }
+                    if (addExternalLine(cfg, t_cre, t_ann, w_proposal.draw(rng, tau_D - t_cre + t_ann), mode)) { break; }
+                }
             }
         }
 

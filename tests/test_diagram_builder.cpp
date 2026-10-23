@@ -11,6 +11,10 @@
 //    diagrams; reset() returns every vertex to the pool.
 // 4. Usable as a start: chains with all updates started from random high-order diagrams stay clean and reach
 //    the same ground-state energy as a chain started from order 0.
+// 5. Physical lines: random lines are drawn as the add updates propose them - internal spans t_ann - t_cre ~
+//    Exp(omega) (mean 1/omega up to the tau_D truncation), external lines annihilation first with span tau_D - t_cre
+//    + t_ann ~ Exp(omega) + Exp(omega) (mean 2/omega), momenta from proposal::PhononMomentum with shape
+//    1/w_spread^2, i.e. <|w|^2 l> = w_spread^2 for every line.
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -131,7 +135,7 @@ static void random_diagrams(test::Checks & check){
                              {"AlAs conduction (C = 0)", {1. / (2. * 0.897), 1. / (2. * 0.243), 0.}},
                              {"isotropic (A = B, C = 0)", {1., 1., 0.}}};
     const diagram_builder::RandomDiagramSpec spec {.n_internal_min = 0, .n_internal_max = 30, .n_external_min = 0,
-                                                   .n_external_max = 4, .w_scale = 1.5};
+                                                   .n_external_max = 4, .w_spread = 1.5};
     for (const BandCase & bc : cases) {
         test::setLK(bc.abc);
         test::Diagram d {77ULL, {0.2, -0.1, 0.05}, 80, 10, {PhononMode{0.5, 2.0}, PhononMode{0.8, 3.0}}, 30.};
@@ -167,7 +171,7 @@ static void random_diagrams(test::Checks & check){
     test::Diagram small {5ULL, {0., 0., 0.}, 6, 4};
     simplemc::xoshiro256ss rng {9ULL};
     const diagram_builder::RandomDiagramSpec big {.n_internal_min = 10, .n_internal_max = 20, .n_external_min = 5,
-                                                  .n_external_max = 9, .w_scale = 1.};
+                                                  .n_external_max = 9, .w_spread = 1.};
     const numerical::SanitizeReport rep {diagram_builder::randomDiagram(small.cfg, rng, {0., 0., 0.}, 10., big)};
     check(rep.clean() && small.cfg.internal_ph_manager->current_length == 6 && small.cfg.external_ph_manager->current_length == 4,
           "spec beyond capacity clamped to the managers' limits (3 internal, 2 external lines), clean");
@@ -185,7 +189,7 @@ static double chain_energy(bool random_start, unsigned long long seed, double & 
     if (random_start) {
         // far above the target order (alpha omega L = 6 lines): 40-60 internal, 0-6 external lines
         diagram_builder::randomDiagram(*cfg, init_rng, p, L, {.n_internal_min = 40, .n_internal_max = 60, .n_external_min = 0,
-                                                              .n_external_max = 6, .w_scale = 3.});
+                                                              .n_external_max = 6, .w_spread = 3.});
     }
     else {
         diagram_builder::reset(*cfg, L);
@@ -231,6 +235,46 @@ static void random_starts(test::Checks & check){
           E0, e0, E1, e1, pull);
 }
 
+static void physical_lines(test::Checks & check){
+    test::setLK({1., 1., 0.});
+    const double omega {0.5}, tau_D {50.}, spread {1.5};
+    test::Diagram d {31ULL, {0., 0., 0.}, 200, 20, tau_D, -1., omega, 1.};
+    simplemc::xoshiro256ss rng {4321ULL};
+    const diagram_builder::RandomDiagramSpec spec {.n_internal_min = 20, .n_internal_max = 20, .n_external_min = 5,
+                                                   .n_external_max = 5, .w_spread = spread};
+    double int_span {0.}, ext_span {0.}, w2l {0.};
+    long n_int {0}, n_ext {0}, creation_first {0};
+    for (int s {0}; s < 300; ++s) {
+        diagram_builder::randomDiagram(d.cfg, rng, {0., 0., 0.}, tau_D, spec);
+        for (int i {0}; i < d.cfg.internal_ph_manager->current_length; i += 2) {      // even slot: creation vertex
+            const Vertex * v {d.cfg.internal_ph_manager->selectVertex(i)};
+            const double l {v->conj_vertex->tau - v->tau};
+            int_span += l;
+            w2l += (v->w[0]*v->w[0] + v->w[1]*v->w[1] + v->w[2]*v->w[2]) * l;
+            ++n_int;
+        }
+        for (int i {0}; i < d.cfg.external_ph_manager->current_length; i += 2) {
+            const Vertex * cre {d.cfg.external_ph_manager->selectVertex(i)};
+            const double t_ann {cre->conj_vertex->tau};
+            if (cre->tau < t_ann) { ++creation_first; }
+            const double l {tau_D - cre->tau + t_ann};
+            ext_span += l;
+            w2l += (cre->w[0]*cre->w[0] + cre->w[1]*cre->w[1] + cre->w[2]*cre->w[2]) * l;
+            ++n_ext;
+        }
+    }
+    int_span /= static_cast<double>(n_int);
+    ext_span /= static_cast<double>(n_ext);
+    w2l /= static_cast<double>(n_int + n_ext);
+    // internal: Exp(omega) truncated at tau_D - t_cre, a few % below 1/omega here; external: 2/omega within 3 %
+    // (1500 lines, relative error ~ 1.8 %); <|w|^2 l> = w_spread^2 within 3 % (7500 lines, chi^2_1: ~ 1.6 %)
+    check(n_int == 6000 && n_ext == 1500 && creation_first == 0 && int_span > 0.9 / omega && int_span < 1. / omega
+          && std::abs(ext_span * omega / 2. - 1.) < 0.03 && std::abs(w2l / (spread * spread) - 1.) < 0.03,
+          "physical lines: internal span %.3f (1/omega = %.1f, truncated), external span %.3f (2/omega = %.1f), "
+          "all %ld external annihilation first, <|w|^2 l> = %.3f (w_spread^2 = %.2f)",
+          int_span, 1. / omega, ext_span, 2. / omega, n_ext, w2l, spread * spread);
+}
+
 int main(){
     test::Checks check {"diagram_builder"};
     test::setLK(test::AlAs);
@@ -238,5 +282,6 @@ int main(){
     failures(check);
     random_diagrams(check);
     random_starts(check);
+    physical_lines(check);
     return check.exit_code();
 }
