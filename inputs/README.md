@@ -205,6 +205,16 @@ All defaults are 1. A larger weight on one side of a pair pays only where its pr
   - `monitor_orbital` only at C = 0.
 - **Estimators:** the requirements listed under `measurements`.
 
+## Running on a cluster
+`job_template.slurm` is a Slurm job for nodes with 2 × 24 cores: one rank per physical core (48 chains per node),
+pinned, with the build's GCC and MPI modules. To use it:
+- set its `ADAPT` lines (modules, repository path) and, if the cluster needs them, the partition/QoS lines;
+- copy it into the run directory;
+- `sbatch job_template.slurm`.
+
+It can create `input.json` from a `template.json` whose seed line reads `"seed": SEED`, taking the seed from the job
+id. Keep `--time` about 30 min above `params.max_time`.
+
 ## Running on the hybrid-core laptop
 Under OpenMPI 4.1, `mpirun --cpu-set` is ignored. To avoid the slow low-power cores (12, 13), restrict the run with
 `taskset`:
