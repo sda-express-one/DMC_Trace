@@ -121,7 +121,8 @@ namespace input {
         const auto & ms {in.measurements};
         require(ms.n_batches >= 2, "measurements: n_batches >= 2");
         require(ms.green_n_bins >= 1, "measurements: green_n_bins >= 1");
-        require(ms.boundary_phonons >= 0 && ms.boundary_phonons <= d.max_external_lines, "measurements: 0 <= boundary_phonons <= max_external_lines");
+        // green_*: < 0 selects every sector (the full trace over boundary states, the P function), 0..max_external_lines one sector
+        require(ms.boundary_phonons <= d.max_external_lines, "measurements: boundary_phonons <= max_external_lines (< 0: all sectors)");
 
         const auto & t {in.thermalization};
         if (t.enabled) {

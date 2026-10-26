@@ -79,7 +79,7 @@ struct run_input {
     struct Measurements {
         std::size_t n_batches {256};            // batches of the estimators' accumulators
         int green_n_bins {100};                 // green_func / green_trace: tau bins over [0, tau_max]
-        int boundary_phonons {0};
+        int boundary_phonons {0};               // green_*: n >= 0 exactly n external lines (0: vacuum sector), < 0 all
         bool split_sign {false};
     };
 

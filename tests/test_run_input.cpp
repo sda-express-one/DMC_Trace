@@ -177,6 +177,9 @@ int main(){
         expect(rejected([](run_input & in){ in.thermalization.checkpoint_interval = 15000; }), "checkpoint interval not a multiple of a check");
         expect(rejected([](run_input & in){ in.model.C_LK = 0.5; in.thermalization.monitor_orbital = true; }), "orbital monitor with C != 0");
         expect(rejected([](run_input & in){ in.start.random_start = true; in.start.n_internal_max = 500; }), "random start beyond the capacity");
+        expect(!rejected([](run_input & in){ in.measurements.boundary_phonons = -1; }), "boundary_phonons < 0, all sectors (must pass)");
+        expect(rejected([](run_input & in){ in.measurements.boundary_phonons = in.diagram.max_external_lines + 1; }),
+               "boundary_phonons beyond max_external_lines");
         expect(rejected([](run_input & in){ in.model.A_LK = 2.; in.measurements_active["eff_mass"] = true; }), "eff_mass with A != B");
         expect(!rejected([](run_input & in){ in.model.A_LK = 2.; in.measurements_active["eff_mass_uniaxial"] = true; }),
                "eff_mass_uniaxial with A != B, C = 0 (must pass)");
@@ -188,7 +191,7 @@ int main(){
             in.diagram.tau_fixed = true; in.diagram.tau_D_start = in.diagram.tau_max; in.diagram.mu = 0.;
             for (const auto n : length_changing_updates) { in.update_weights[std::string {n}] = 0.; }
             in.measurements_active["green_trace"] = true; }), "green_trace at fixed tau");
-        check(ok == total, "validate: %d/%d settings classified correctly (3 valid, the rest rejected)", ok, total);
+        check(ok == total, "validate: %d/%d settings classified correctly (4 valid, the rest rejected)", ok, total);
     }
 
     // 4. globals
