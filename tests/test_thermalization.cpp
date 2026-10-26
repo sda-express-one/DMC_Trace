@@ -11,6 +11,10 @@
 //    checkpoint interval, with every rank at the same step count.
 // 3. The wall-time deadline: with a deadline already past, a chain that cannot pass is stopped at the checkpoint
 //    after the first evaluation, as timedOut() and not thermalized(); without a deadline it keeps going.
+// 4. The ESS criterion on iid windows, default thresholds (total 400, 50 per split chain): the total decides for
+//    4 chains, the per-split-chain floor for 48; windows of 64 draws per chain (the old 256-batch monitor) fail in
+//    both, 256 draws (the 1024-batch monitor) pass in both.
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <memory>
@@ -82,15 +86,16 @@ static void in_process(test::Checks & check){
     test::setLK({1., 1., 0.});
     const double L {12.};
     const int n_chains {6};
-    const long steps_per_cycle {10}, cycles_per_checkpoint {10000}, max_checkpoints {60};
+    const long steps_per_cycle {10}, cycles_per_checkpoint {1000}, max_checkpoints {600};
 
     std::vector<std::unique_ptr<Chain>> chains;
     std::vector<convergence_monitor> monitors;
     for (int c {0}; c < n_chains; ++c) {
         chains.push_back(std::make_unique<Chain>(100ULL + static_cast<unsigned long long>(c), L, c % 2 == 1));
-        monitors.emplace_back(&chains.back()->d.cfg, convergence_monitor::Options{});      // n_batches 256
+        monitors.emplace_back(&chains.back()->d.cfg, convergence_monitor::Options{.n_batches = 256});    // 1000 samples per checkpoint: 1024 would leave no window (2048 before the first merge)
     }
     thermalization_control ctl {MPI_COMM_SELF, monitors[0].names(), monitors[0].maxWindowBatches()};
+    const int need {thermalization_control::Options {}.consecutive};
     simplemc::xoshiro256ss unused {1ULL};
 
     int declared_at {0};
@@ -105,7 +110,7 @@ static void in_process(test::Checks & check){
         std::size_t batches {0};
         for (const auto & m : monitors) { windows.push_back(m.window(batches)); }
         const thermalization_control::Record rec {ctl.evaluate(windows, batches, static_cast<std::uint64_t>(cp) * cycles_per_checkpoint * steps_per_cycle)};
-        if (rec.consecutive >= 3) { declared_at = cp; }
+        if (rec.consecutive >= need) { declared_at = cp; }
     }
 
     const auto & h {ctl.history()};
@@ -113,11 +118,12 @@ static void in_process(test::Checks & check){
     std::size_t worst {0};
     for (std::size_t k {1}; k < h.front().results.size(); ++k) { if (h.front().results[k].rhat > h.front().results[worst].rhat) { worst = k; } }
     const bool early_fail {!h.front().pass};
-    const bool tail_passes {declared_at > 0 && h.size() >= 3 && h.back().pass && h[h.size() - 2].pass && h[h.size() - 3].pass};
+    bool tail_passes {declared_at > 0 && h.size() >= static_cast<std::size_t>(need)};
+    for (int i {1}; tail_passes && i <= need; ++i) { tail_passes = h[h.size() - static_cast<std::size_t>(i)].pass; }
     check(early_fail && tail_passes,
           "%d chains (3 from order 0, 3 from 40-60-line starts): first checkpoint fails (worst R-hat: %s %.3f), thermalized at checkpoint %d "
-          "(%ld steps per chain) after 3 consecutive passes",
-          n_chains, ctl.names()[worst].c_str(), h.front().results[worst].rhat, declared_at, declared_at * cycles_per_checkpoint * steps_per_cycle);
+          "(%ld steps per chain) after %d consecutive passes",
+          n_chains, ctl.names()[worst].c_str(), h.front().results[worst].rhat, declared_at, declared_at * cycles_per_checkpoint * steps_per_cycle, need);
 
     // production: the energy from every chain after thermalization
     double E {0.}, e2 {0.};
@@ -142,7 +148,10 @@ static void mpi_run(test::Checks & check){
     Chain chain {500ULL + static_cast<unsigned long long>(rank), 12., rank % 2 == 0};
     simplemc::measurement_set therm {simplemc::measurement{convergence_monitor{&chain.d.cfg, {}}, "convergence"}};
     convergence_monitor & mon {therm.get<0>().value()};
-    thermalization_control ctl {MPI_COMM_WORLD, mon.names(), mon.maxWindowBatches()};
+    // the suite runs on one rank (2 split chains, 512 draws right after a merge): a total of 400 would ask for
+    // ESS/draws ~ 0.8, so the totals are scaled to the chains present, 50 per split chain (the floor) as for many ranks
+    thermalization_control ctl {MPI_COMM_WORLD, mon.names(), mon.maxWindowBatches(),
+                                {.min_bulk_ess = 100. * size, .min_tail_ess = 100. * size}};
 
     const std::uint64_t interval {100000}, cap {20000000};
     simplemc::simulation_params tp;
@@ -181,14 +190,14 @@ static void options_and_guard(test::Checks & check){
           && std::abs(s[8] - 1./3.) < 1e-12 && std::abs(s[9] - 1./3.) < 1e-12 && std::abs(s[10] - 1./3.) < 1e-12;
 
     bool threw {false};
-    try { thermalization_control bad {MPI_COMM_SELF, all.names(), 64}; } catch (const std::invalid_argument &) { threw = true; }
-    check(finite && threw, "all monitor options: 11 finite scalars (sign +1, orbital fractions 1/3 for A = B); n_batches = 64 refused "
+    try { thermalization_control bad {MPI_COMM_SELF, all.names(), 32}; } catch (const std::invalid_argument &) { threw = true; }
+    check(finite && threw, "all monitor options: 11 finite scalars (sign +1, orbital fractions 1/3 for A = B); n_batches = 32 refused "
                            "(the window could never reach 50 ESS per split chain)");
 }
 
 static void deadline(test::Checks & check){
-    // one scalar, 16 batch means of iid noise per checkpoint: 8 draws per split chain, below the 50 ESS threshold, so
-    // the test can never pass and only the deadline can end the phase
+    // one scalar, one chain, 16 batch means of iid noise per checkpoint: 16 draws in total, below the 400 total ESS,
+    // so the test can never pass and only the deadline can end the phase
     std::mt19937_64 rng {77ULL};
     std::normal_distribution<double> g {0., 1.};
     const auto window {[&]{ std::vector<double> w(16); for (double & x : w) { x = g(rng); } return w; }};
@@ -208,6 +217,34 @@ static void deadline(test::Checks & check){
           timed_at, timed.timedOut() ? 1 : 0, timed.thermalized() ? 1 : 0, open.stopped() ? 0 : 1);
 }
 
+static void ess_criterion(test::Checks & check){
+    // one scalar, iid windows of `batches` draws per chain: R-hat ~ 1, total ESS ~ chains x batches
+    std::mt19937_64 rng {91ULL};
+    std::normal_distribution<double> g {0., 1.};
+    const auto windows {[&](int chains, std::size_t batches){
+        std::vector<std::vector<double>> w(static_cast<std::size_t>(chains), std::vector<double>(batches));
+        for (auto & c : w) { for (double & x : c) { x = g(rng); } }
+        return w;
+    }};
+    const auto passes {[&](thermalization_control::Options opt, int chains, std::size_t batches, double & ess){
+        thermalization_control ctl {MPI_COMM_SELF, {"x"}, 1024, opt};
+        const thermalization_control::Record rec {ctl.evaluate(windows(chains, batches), batches, 1)};
+        ess = std::min(rec.results[0].ess_bulk, rec.results[0].ess_tail);
+        return rec.pass;
+    }};
+
+    // 4 chains (8 split): total 400 = floor 8 x 50; 48 chains (96 split): floor 4800 > total 400
+    double e4s {0.}, e4l {0.}, e48s {0.}, e48l {0.};
+    const bool p4s {passes({}, 4, 64, e4s)};       // ESS ~ 256 < 400
+    const bool p4l {passes({}, 4, 256, e4l)};      // ESS ~ 1000
+    const bool p48s {passes({}, 48, 64, e48s)};    // ESS ~ 3000: above the total, below the floor
+    const bool p48l {passes({}, 48, 256, e48l)};   // ESS ~ 12000
+    check(!p4s && p4l && !p48s && p48l,
+          "ESS criterion (total 400, 50 per split chain): 4 chains x 64 draws, ESS %.0f < 400 fails (%d), x 256, ESS %.0f passes (%d); "
+          "48 chains x 64 draws, ESS %.0f < floor 4800 fails (%d), x 256, ESS %.0f passes (%d)",
+          e4s, p4s ? 1 : 0, e4l, p4l ? 1 : 0, e48s, p48s ? 1 : 0, e48l, p48l ? 1 : 0);
+}
+
 int main(int argc, char ** argv){
     MPI_Init(&argc, &argv);
     int rank {0}, size {1};
@@ -216,7 +253,7 @@ int main(int argc, char ** argv){
     int code {0};
     if (rank == 0) {
         test::Checks check {"R-hat thermalization (convergence_monitor, thermalization_control)"};
-        if (size == 1) { options_and_guard(check); in_process(check); deadline(check); }     // once, not on every rank
+        if (size == 1) { options_and_guard(check); in_process(check); deadline(check); ess_criterion(check); }     // once, not on every rank
         mpi_run(check);
         code = check.exit_code();
     }

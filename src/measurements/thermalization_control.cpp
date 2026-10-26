@@ -105,8 +105,9 @@ thermalization_control::Record thermalization_control::evaluate(const std::vecto
         const measurement::ConvergenceResult r {measurement::diagnose(chains)};
         rec.results.push_back(r);
         // NaN comparisons are false: a scalar without a valid diagnostic never passes
-        const bool ok {r.rhat < opt_.rhat_max && r.ess_bulk >= opt_.min_bulk_ess_per_split_chain * r.chains
-                       && r.ess_tail >= opt_.min_tail_ess_per_split_chain * r.chains};
+        const double split {static_cast<double>(r.chains)};
+        const bool ok {r.rhat < opt_.rhat_max && r.ess_bulk >= std::max(opt_.min_bulk_ess, opt_.min_bulk_ess_per_split_chain * split)
+                       && r.ess_tail >= std::max(opt_.min_tail_ess, opt_.min_tail_ess_per_split_chain * split)};
         pass = pass && ok;
     }
     consecutive_ = pass ? consecutive_ + 1 : 0;
@@ -120,8 +121,9 @@ void thermalization_control::write(const std::string & path) const {
     FILE * f {std::fopen(path.c_str(), "w")};
     if (f == nullptr) { throw std::runtime_error("thermalization_control::write: cannot open " + path); }
     std::fprintf(f, "# thermalization: R-hat convergence test (Vehtari et al. 2021), %d chains\n", size_);
-    std::fprintf(f, "# rhat_max = %.4f   min bulk-ESS per split chain = %.1f   min tail-ESS per split chain = %.1f   consecutive = %d\n",
-                 opt_.rhat_max, opt_.min_bulk_ess_per_split_chain, opt_.min_tail_ess_per_split_chain, opt_.consecutive);
+    std::fprintf(f, "# rhat_max = %.4f   min bulk/tail-ESS = max(%.1f, %.1f x split chains) / max(%.1f, %.1f x split chains)   consecutive = %d\n",
+                 opt_.rhat_max, opt_.min_bulk_ess, opt_.min_bulk_ess_per_split_chain, opt_.min_tail_ess, opt_.min_tail_ess_per_split_chain,
+                 opt_.consecutive);
     std::fprintf(f, "# thermalized: %s\n", thermalized() ? "yes"
                  : timedOut() ? "no - stopped by the wall-time budget" : "no (not yet, or the step cap ended the run)");
     std::fprintf(f, "# columns: checkpoint steps batches scalar rhat rhat_bulk rhat_fold ess_bulk ess_tail pass consecutive\n");

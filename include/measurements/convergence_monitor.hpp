@@ -35,7 +35,7 @@ struct convergence_monitor {
         bool sign {true};
         bool energy {false};
         bool orbital {false};
-        std::size_t n_batches {256};
+        std::size_t n_batches {1024};       // window: 256-512 draws per split chain, enough for a total ESS of 400 on 1 rank
     };
 
     diagram_cfg * cfg {nullptr};

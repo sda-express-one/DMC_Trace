@@ -26,11 +26,15 @@
 //      evaluates them and fills the broadcast; the other ranks return at once and keep sampling, reading the
 //      decision at checkpoint c + 1. The decision thus acts one checkpoint interval late - extra thermalization.
 // Thermalization is reached once every monitored scalar passes at `consecutive` successive evaluations (a failure
-// resets the count): max(rank-normalised split-R-hat, folded split-R-hat) < rhat_max, bulk-ESS and tail-ESS per split
-// chain >= min_bulk_ess_per_split_chain and min_tail_ess_per_split_chain. Windows with fewer than 8 batches (the
-// start of the run) never pass. The window holds between n_batches/2 and n_batches batch means per chain, i.e. at
-// least n_batches/4 draws per split chain, and an ESS cannot exceed the number of draws: the constructor refuses
-// settings with n_batches/4 below the per-split-chain ESS thresholds (with 50, n_batches >= 200: the default 256).
+// resets the count): max(rank-normalised split-R-hat, folded split-R-hat) < rhat_max, and the (total, over all chains)
+// bulk-ESS >= max(min_bulk_ess, min_bulk_ess_per_split_chain x split chains), likewise the tail-ESS. The totals are the
+// paper's recommendation (rank-normalised ESS > 400); its "50 per split chain" is the same 400 for its minimum of 4
+// chains; the per-split-chain floor (default 50, the paper's figure) decides above 4 ranks. With the monitor's default
+// 1024 batches (256-512 draws per split chain) the floor asks for an ESS/draws ratio of 0.1-0.2. Windows with fewer than 8 batches (the start of the run) never pass. The window holds between
+// n_batches/2 and n_batches batch means per chain, i.e. at least n_batches/4 draws per split chain, and an ESS cannot
+// exceed the number of draws: the constructor refuses settings with n_batches/4 below the per-split-chain floors.
+// The totals need enough chains (2 x ranks x n_batches/4 draws >= min_*_ess): the chain count is known only from the
+// windows, so this is not checked here (diagramc warns).
 //
 // Wall-time budget: with setDeadline(t) (an absolute MPI_Wtime value), the root also ends the phase - without
 // thermalization - at the first checkpoint it evaluates after t; the decision travels like a "thermalized" one, so
@@ -54,9 +58,11 @@ class thermalization_control {
 public:
     struct Options {
         double rhat_max {1.01};
-        double min_bulk_ess_per_split_chain {50.};     // the paper's minimum (400 in total for its default 4 chains)
-        double min_tail_ess_per_split_chain {50.};     // likewise; per split chain so it scales with the number of ranks
-        int consecutive {3};
+        double min_bulk_ess {400.};                    // total over all chains: the paper's recommendation
+        double min_tail_ess {400.};
+        double min_bulk_ess_per_split_chain {50.};     // floor scaling with the number of chains (binds above 4 ranks)
+        double min_tail_ess_per_split_chain {50.};
+        int consecutive {5};
         int root {0};
     };
 

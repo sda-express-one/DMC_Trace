@@ -34,7 +34,8 @@ convergence_monitor::Options run_input::monitorOptions() const {
 }
 
 thermalization_control::Options run_input::controlOptions() const {
-    return {.rhat_max = thermalization.rhat_max, .min_bulk_ess_per_split_chain = thermalization.min_bulk_ess_per_split_chain,
+    return {.rhat_max = thermalization.rhat_max, .min_bulk_ess = thermalization.min_bulk_ess, .min_tail_ess = thermalization.min_tail_ess,
+            .min_bulk_ess_per_split_chain = thermalization.min_bulk_ess_per_split_chain,
             .min_tail_ess_per_split_chain = thermalization.min_tail_ess_per_split_chain,
             .consecutive = thermalization.consecutive, .root = thermalization.root};
 }
@@ -126,7 +127,8 @@ namespace input {
 
         const auto & t {in.thermalization};
         if (t.enabled) {
-            require(t.min_bulk_ess_per_split_chain > 0. && t.min_tail_ess_per_split_chain > 0., "thermalization: ESS thresholds > 0");
+            require(t.min_bulk_ess > 0. && t.min_tail_ess > 0. && t.min_bulk_ess_per_split_chain > 0. && t.min_tail_ess_per_split_chain > 0.,
+                    "thermalization: ESS thresholds > 0");
             // the thermalization_control guard: right after a merge the window has monitor_n_batches/4 draws per split chain
             const double min_draws {static_cast<double>(t.monitor_n_batches) / 4.};
             require(min_draws >= t.min_bulk_ess_per_split_chain && min_draws >= t.min_tail_ess_per_split_chain,
@@ -251,9 +253,9 @@ namespace input {
                      in.measurements.n_batches, in.measurements.green_n_bins, in.measurements.boundary_phonons,
                      in.measurements.split_sign ? 1 : 0);
         std::fprintf(fp, "# thermalization: enabled = %d  monitor tau_D/sign/energy/orbital = %d/%d/%d/%d  monitor_n_batches = %zu  rhat_max = %.4f  "
-                         "ESS bulk/tail per split chain = %.1f/%.1f  consecutive = %d  root = %d\n",
+                         "ESS bulk/tail >= %.1f/%.1f and per split chain >= %.1f/%.1f  consecutive = %d  root = %d\n",
                      t.enabled ? 1 : 0, t.monitor_tau_D ? 1 : 0, t.monitor_sign ? 1 : 0, t.monitor_energy ? 1 : 0, t.monitor_orbital ? 1 : 0, t.monitor_n_batches,
-                     t.rhat_max, t.min_bulk_ess_per_split_chain, t.min_tail_ess_per_split_chain, t.consecutive, t.root);
+                     t.rhat_max, t.min_bulk_ess, t.min_tail_ess, t.min_bulk_ess_per_split_chain, t.min_tail_ess_per_split_chain, t.consecutive, t.root);
         std::fprintf(fp, "# thermalization: max_steps = %llu  checkpoint_interval = %llu  steps_per_cycle = %llu  cycles_per_check = %llu\n",
                      static_cast<unsigned long long>(t.max_steps), static_cast<unsigned long long>(t.checkpoint_interval),
                      static_cast<unsigned long long>(t.steps_per_cycle), static_cast<unsigned long long>(t.cycles_per_check));

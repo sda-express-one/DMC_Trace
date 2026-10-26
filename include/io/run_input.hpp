@@ -89,11 +89,13 @@ struct run_input {
         bool monitor_sign {true};
         bool monitor_energy {true};
         bool monitor_orbital {false};
-        std::size_t monitor_n_batches {256};
+        std::size_t monitor_n_batches {1024};
         double rhat_max {1.01};                 // thermalization_control::Options
+        double min_bulk_ess {400.};
+        double min_tail_ess {400.};
         double min_bulk_ess_per_split_chain {50.};
         double min_tail_ess_per_split_chain {50.};
-        int consecutive {3};
+        int consecutive {5};
         int root {0};
         std::uint64_t max_steps {1'000'000'000};        // cap of the thermalization run
         std::uint64_t checkpoint_interval {1'000'000};  // steps between R-hat checkpoints
@@ -208,6 +210,8 @@ void simplemc_save_input_config(S s, const run_input & in){
     t.save_at("monitor_orbital", in.thermalization.monitor_orbital);
     t.save_at("monitor_n_batches", in.thermalization.monitor_n_batches);
     t.save_at("rhat_max", in.thermalization.rhat_max);
+    t.save_at("min_bulk_ess", in.thermalization.min_bulk_ess);
+    t.save_at("min_tail_ess", in.thermalization.min_tail_ess);
     t.save_at("min_bulk_ess_per_split_chain", in.thermalization.min_bulk_ess_per_split_chain);
     t.save_at("min_tail_ess_per_split_chain", in.thermalization.min_tail_ess_per_split_chain);
     t.save_at("consecutive", in.thermalization.consecutive);
@@ -274,6 +278,8 @@ void simplemc_load_input_config(const S & s, run_input & in){
         t.try_load_at("monitor_orbital", in.thermalization.monitor_orbital);
         t.try_load_at("monitor_n_batches", in.thermalization.monitor_n_batches);
         t.try_load_at("rhat_max", in.thermalization.rhat_max);
+        t.try_load_at("min_bulk_ess", in.thermalization.min_bulk_ess);
+        t.try_load_at("min_tail_ess", in.thermalization.min_tail_ess);
         t.try_load_at("min_bulk_ess_per_split_chain", in.thermalization.min_bulk_ess_per_split_chain);
         t.try_load_at("min_tail_ess_per_split_chain", in.thermalization.min_tail_ess_per_split_chain);
         t.try_load_at("consecutive", in.thermalization.consecutive);

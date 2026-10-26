@@ -270,6 +270,14 @@ namespace {
             simplemc::measurement_set therm {simplemc::measurement {convergence_monitor {&cfg, in.monitorOptions()}, "convergence"}};
             convergence_monitor & mon {therm.get<0>().value()};
             thermalization_control ctl {comm, mon.names(), mon.maxWindowBatches(), in.controlOptions()};
+            // right after a merge each split chain holds maxWindowBatches/4 draws: with fewer draws in total than the
+            // required ESS the test can pass only on antithetic estimates (e.g. a single rank)
+            const double min_total_draws {2. * comm.size() * static_cast<double>(mon.maxWindowBatches() / 4)};
+            if (root && min_total_draws < std::max(in.thermalization.min_bulk_ess, in.thermalization.min_tail_ess)) {
+                std::printf("diagramc: WARNING - %d ranks hold only %.0f draws in total after a window merge, below the required "
+                            "total ESS (%.0f/%.0f): thermalization may never pass (more ranks, or a larger monitor_n_batches)\n",
+                            comm.size(), min_total_draws, in.thermalization.min_bulk_ess, in.thermalization.min_tail_ess);
+            }
             ctl.setDeadline(t0 + budget);
             const simplemc::simulation_params tp {in.thermalizationParams()};
             simplemc::progress_printer printer {progress("[thermalization]", tp.max_steps, 0., root)};

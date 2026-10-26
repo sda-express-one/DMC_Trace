@@ -173,7 +173,8 @@ int main(){
                "variable length without a length-changing update");
         expect(rejected([](run_input & in){ in.update_weights["rm_ext_ph"] = 0.; }), "one of the add/rm pair zero");
         expect(rejected([](run_input & in){ in.update_weights["mv_tau"] = -1.; }), "negative weight");
-        expect(rejected([](run_input & in){ in.thermalization.monitor_n_batches = 64; }), "monitor_n_batches below 4 x ESS");
+        expect(rejected([](run_input & in){ in.thermalization.monitor_n_batches = 32; }), "monitor_n_batches below 4 x ESS per split chain");
+        expect(rejected([](run_input & in){ in.thermalization.min_tail_ess = 0.; }), "total ESS threshold <= 0");
         expect(rejected([](run_input & in){ in.thermalization.checkpoint_interval = 15000; }), "checkpoint interval not a multiple of a check");
         expect(rejected([](run_input & in){ in.model.C_LK = 0.5; in.thermalization.monitor_orbital = true; }), "orbital monitor with C != 0");
         expect(rejected([](run_input & in){ in.start.random_start = true; in.start.n_internal_max = 500; }), "random start beyond the capacity");
