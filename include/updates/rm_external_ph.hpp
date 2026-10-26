@@ -23,6 +23,11 @@ struct rm_ext_ph_update {
 
     bool incoming_before_outgoing {true};
 
+    // removing the last external line (case 1): the merge entry before the untouched middle became canonical
+    // (k = p, basis U(p)), so the first middle vertex's overlap is restaged in attempt() and committed in accept()
+    bool restage_first_middle {false};
+    Eigen::Matrix3d first_middle_overlap {Eigen::Matrix3d::Identity()};
+
     std::vector<weight::ProposedVertexWeight> proposed_weights_beginning;
     std::vector<weight::ProposedVertexWeight> proposed_weights_middle;
     std::vector<weight::ProposedVertexWeight> proposed_weights_end;

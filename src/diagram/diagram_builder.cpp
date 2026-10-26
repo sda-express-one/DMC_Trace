@@ -115,6 +115,10 @@ namespace diagram_builder {
             for (int a {0}; a < 3; ++a) { k[a] -= sgn * v->w[a]; }
             v->k = k;
         }
+        // the two ends carry the same momentum, p - sum of the external w: taken from the head bitwise (the running
+        // sum above reaches it only up to rounding), so both ends get the same basis and, with no external line, the
+        // last segment is exactly p (diagram_cfg::p_ext)
+        cfg.diagram_tail->prev->k = cfg.diagram_head->k;
     }
 
     numerical::SanitizeReport finalize(diagram_cfg & cfg){

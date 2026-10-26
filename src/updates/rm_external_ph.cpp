@@ -35,6 +35,14 @@ double rm_ext_ph_update::attempt(){
     if(cfg->external_ph_manager->current_length < 2){
         return -1; 
     }
+
+    // Removing the last external line leaves a diagram whose two end segments (head, diagram_tail->prev) carry
+    // exactly the external momentum p (diagram_cfg::p_ext): they are staged with k = p and its basis, not with the
+    // arithmetic (p - w) + w, so that both ends get bitwise the same basis and the trace closes exactly (on a symmetry
+    // plane of p the LK gauge flips for a rounding residual). Interior segments are reverted as usual.
+    const bool last_line {cfg->external_ph_manager->current_length == 2};
+    const auto end_k {[&](bool is_end, const std::array<double, 3> & k){ return (last_line && is_end) ? cfg->p_ext : k; }};
+    restage_first_middle = false;
     
     ptr_one = cfg->external_ph_manager->chooseOutgoingVertex()->conjugated->linked_vertex;
     ptr_two = ptr_one->conj_vertex;
@@ -72,7 +80,7 @@ double rm_ext_ph_update::attempt(){
         // is handled separately below, since it also needs the merge treatment, not just revert).
         while (ptr != ptr_one->prev) {
             weight::ProposedVertexWeight current_new_weight;
-            p_fin = {ptr->k[0] + w_to_reject[0], ptr->k[1] + w_to_reject[1], ptr->k[2] + w_to_reject[2]};
+            p_fin = end_k(ptr == cfg->diagram_head, {ptr->k[0] + w_to_reject[0], ptr->k[1] + w_to_reject[1], ptr->k[2] + w_to_reject[2]});
             current_new_weight.k = p_fin;
             p_fin_sq = p_fin[0]*p_fin[0] + p_fin[1]*p_fin[1] + p_fin[2]*p_fin[2];
 
@@ -101,12 +109,24 @@ double rm_ext_ph_update::attempt(){
         // ptr_one->prev->k + w_to_reject exactly - reusing it avoids a redundant diagonalization
         // and mirrors rm_internal_ph.cpp's merge-point convention (reuse whichever side already
         // holds the target value).
+        bool prev_canonical {false};
         {
             Vertex * prev {ptr_one->prev};
             weight::ProposedVertexWeight prev_weight;
-            prev_weight.k = ptr_one->k;
-            prev_weight.eff_masses = ptr_one->eff_masses;
-            prev_weight.baseWF = ptr_one->baseWF;
+            // an end segment of the line-free diagram (the head, or the last segment when the merge reaches the tail)
+            prev_canonical = last_line && (prev == cfg->diagram_head || (adjacent && ptr_two->next == cfg->diagram_tail));
+            if (prev_canonical) {
+                prev_weight.k = cfg->p_ext;
+                eigensolution_wrapper = weight::LKMatrix::diagonalizeLKHamiltonian(prev_weight.k);
+                eigenvalues = {eigensolution_wrapper(0,0), eigensolution_wrapper(0,1), eigensolution_wrapper(0,2)};
+                prev_weight.eff_masses = weight::LKMatrix::computeEffMassfromEigenval(eigenvalues);
+                prev_weight.baseWF = eigensolution_wrapper.block<3,3>(1,0);
+            }
+            else {
+                prev_weight.k = ptr_one->k;
+                prev_weight.eff_masses = ptr_one->eff_masses;
+                prev_weight.baseWF = ptr_one->baseWF;
+            }
 
             if (prev == cfg->diagram_head) {
                 prev_weight.vertex_wf_component = Eigen::Matrix3d::Identity();
@@ -115,7 +135,7 @@ double rm_ext_ph_update::attempt(){
                 prev_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(proposed_weights_beginning.back().baseWF, prev_weight.baseWF);
             }
 
-            const double k_sq {ptr_one->k[0]*ptr_one->k[0] + ptr_one->k[1]*ptr_one->k[1] + ptr_one->k[2]*ptr_one->k[2]};
+            const double k_sq {prev_weight.k[0]*prev_weight.k[0] + prev_weight.k[1]*prev_weight.k[1] + prev_weight.k[2]*prev_weight.k[2]};
             const double duration_end {adjacent ? ptr_two->tau_next : ptr_one->tau_next};
             weight::setSegmentAction(prev_weight.el_prop_action, prev_weight.action_shift, k_sq, prev_weight.eff_masses, duration_end - prev->tau);
 
@@ -130,8 +150,17 @@ double rm_ext_ph_update::attempt(){
         // pushed below instead, so including it here too would double-count it (once with its stale
         // short duration here, once with its correct extended duration there). With exactly one
         // interior vertex (ptr_two->prev == ptr_one->next) the walk is empty and gives Identity.
+        // If the merge entry before the middle became canonical, the first middle vertex's cached overlap (with
+        // ptr_one's basis) no longer matches its predecessor: it is restaged here and committed in accept().
         for (Vertex * ptr_mid {ptr_one->next}; !adjacent && ptr_mid != ptr_two->prev; ptr_mid = ptr_mid->next) {
-            middle_product = middle_product * ptr_mid->vertex_wf_component * ptr_mid->el_prop_action.diagonal().asDiagonal();
+            if (ptr_mid == ptr_one->next && prev_canonical) {
+                restage_first_middle = true;
+                first_middle_overlap = Coupling::LKOverlap::computeMatrix(proposed_weights_beginning.back().baseWF, ptr_mid->baseWF);
+                middle_product = middle_product * first_middle_overlap * ptr_mid->el_prop_action.diagonal().asDiagonal();
+            }
+            else {
+                middle_product = middle_product * ptr_mid->vertex_wf_component * ptr_mid->el_prop_action.diagonal().asDiagonal();
+            }
             shift_untouched += ptr_mid->action_shift;
         }
 
@@ -142,15 +171,36 @@ double rm_ext_ph_update::attempt(){
         if (!adjacent) {
             Vertex * prev_two {ptr_two->prev};
             weight::ProposedVertexWeight prev_two_weight;
-            prev_two_weight.k = prev_two->k;
-            prev_two_weight.eff_masses = prev_two->eff_masses;
-            prev_two_weight.baseWF = prev_two->baseWF;
-            // prev_two's real overlap is unchanged (middle is untouched) - read the already-
-            // cached value directly instead of a placeholder deferred to the final trace, which
-            // is exactly what got missed the first time around.
-            prev_two_weight.vertex_wf_component = prev_two->vertex_wf_component;
+            // the last segment of the line-free diagram when the merge reaches the tail
+            const bool prev_two_canonical {last_line && ptr_two->next == cfg->diagram_tail};
+            // its predecessor in the new diagram: the beginning's merge entry if prev_two is the first middle vertex,
+            // otherwise the untouched middle vertex before it
+            const bool after_merge {prev_two == ptr_one->next};
+            if (prev_two_canonical) {
+                prev_two_weight.k = cfg->p_ext;
+                eigensolution_wrapper = weight::LKMatrix::diagonalizeLKHamiltonian(prev_two_weight.k);
+                eigenvalues = {eigensolution_wrapper(0,0), eigensolution_wrapper(0,1), eigensolution_wrapper(0,2)};
+                prev_two_weight.eff_masses = weight::LKMatrix::computeEffMassfromEigenval(eigenvalues);
+                prev_two_weight.baseWF = eigensolution_wrapper.block<3,3>(1,0);
+            }
+            else {
+                prev_two_weight.k = prev_two->k;
+                prev_two_weight.eff_masses = prev_two->eff_masses;
+                prev_two_weight.baseWF = prev_two->baseWF;
+            }
+            if (prev_two_canonical || (after_merge && prev_canonical)) {
+                // a basis on either side of this overlap changed: recomputed
+                const Eigen::Matrix3d & pred {after_merge ? proposed_weights_beginning.back().baseWF : prev_two->prev->baseWF};
+                prev_two_weight.vertex_wf_component = Coupling::LKOverlap::computeMatrix(pred, prev_two_weight.baseWF);
+            }
+            else {
+                // prev_two's real overlap is unchanged (middle is untouched) - read the already-
+                // cached value directly instead of a placeholder deferred to the final trace, which
+                // is exactly what got missed the first time around.
+                prev_two_weight.vertex_wf_component = prev_two->vertex_wf_component;
+            }
 
-            const double k_sq {prev_two->k[0]*prev_two->k[0] + prev_two->k[1]*prev_two->k[1] + prev_two->k[2]*prev_two->k[2]};
+            const double k_sq {prev_two_weight.k[0]*prev_two_weight.k[0] + prev_two_weight.k[1]*prev_two_weight.k[1] + prev_two_weight.k[2]*prev_two_weight.k[2]};
             weight::setSegmentAction(prev_two_weight.el_prop_action, prev_two_weight.action_shift, k_sq, prev_two_weight.eff_masses, ptr_two->tau_next - prev_two->tau);
 
             proposed_weights_end.push_back(prev_two_weight);
@@ -164,7 +214,7 @@ double rm_ext_ph_update::attempt(){
         ptr = ptr_two->next;
         while (ptr != cfg->diagram_tail) {
             weight::ProposedVertexWeight current_new_weight;
-            p_fin = {ptr->k[0] + w_to_reject[0], ptr->k[1] + w_to_reject[1], ptr->k[2] + w_to_reject[2]};
+            p_fin = end_k(ptr == cfg->diagram_tail->prev, {ptr->k[0] + w_to_reject[0], ptr->k[1] + w_to_reject[1], ptr->k[2] + w_to_reject[2]});
             current_new_weight.k = p_fin;
             p_fin_sq = p_fin[0]*p_fin[0] + p_fin[1]*p_fin[1] + p_fin[2]*p_fin[2];
 
@@ -242,7 +292,7 @@ double rm_ext_ph_update::attempt(){
         ptr = cfg->diagram_head;
         while (ptr != ptr_two->prev) {
             weight::ProposedVertexWeight current_new_weight;
-            p_fin = {ptr->k[0] + w_to_reject[0], ptr->k[1] + w_to_reject[1], ptr->k[2] + w_to_reject[2]};
+            p_fin = end_k(ptr == cfg->diagram_head, {ptr->k[0] + w_to_reject[0], ptr->k[1] + w_to_reject[1], ptr->k[2] + w_to_reject[2]});
             current_new_weight.k = p_fin;
             p_fin_sq = p_fin[0]*p_fin[0] + p_fin[1]*p_fin[1] + p_fin[2]*p_fin[2];
 
@@ -271,7 +321,9 @@ double rm_ext_ph_update::attempt(){
         {
             Vertex * prev_two {ptr_two->prev};
             weight::ProposedVertexWeight prev_two_weight;
-            p_fin = {prev_two->k[0] + w_to_reject[0], prev_two->k[1] + w_to_reject[1], prev_two->k[2] + w_to_reject[2]};
+            // the head, or (adjacent) the last segment when the merge reaches the tail
+            p_fin = end_k(prev_two == cfg->diagram_head || (adjacent && ptr_one->next == cfg->diagram_tail),
+                          {prev_two->k[0] + w_to_reject[0], prev_two->k[1] + w_to_reject[1], prev_two->k[2] + w_to_reject[2]});
             prev_two_weight.k = p_fin;
             p_fin_sq = p_fin[0]*p_fin[0] + p_fin[1]*p_fin[1] + p_fin[2]*p_fin[2];
 
@@ -324,7 +376,9 @@ double rm_ext_ph_update::attempt(){
             // since ptr_one->prev's own k is still double-shifted, not unshifted.
             Vertex * prev_one {ptr_one->prev};
             weight::ProposedVertexWeight prev_one_weight;
-            p_fin = {prev_one->k[0] + w_double_to_reject[0], prev_one->k[1] + w_double_to_reject[1], prev_one->k[2] + w_double_to_reject[2]};
+            // the last segment when the merge reaches the tail
+            p_fin = end_k(ptr_one->next == cfg->diagram_tail,
+                          {prev_one->k[0] + w_double_to_reject[0], prev_one->k[1] + w_double_to_reject[1], prev_one->k[2] + w_double_to_reject[2]});
             prev_one_weight.k = p_fin;
             p_fin_sq = p_fin[0]*p_fin[0] + p_fin[1]*p_fin[1] + p_fin[2]*p_fin[2];
 
@@ -349,7 +403,7 @@ double rm_ext_ph_update::attempt(){
         ptr = ptr_one->next;
         while (ptr != cfg->diagram_tail) {
             weight::ProposedVertexWeight current_new_weight;
-            p_fin = {ptr->k[0] + w_to_reject[0], ptr->k[1] + w_to_reject[1], ptr->k[2] + w_to_reject[2]};
+            p_fin = end_k(ptr == cfg->diagram_tail->prev, {ptr->k[0] + w_to_reject[0], ptr->k[1] + w_to_reject[1], ptr->k[2] + w_to_reject[2]});
             current_new_weight.k = p_fin;
             p_fin_sq = p_fin[0]*p_fin[0] + p_fin[1]*p_fin[1] + p_fin[2]*p_fin[2];
 
@@ -442,6 +496,9 @@ void rm_ext_ph_update::accept(){
             ptr_one->prev->action_shift = proposed_weights_beginning[idx].action_shift;
             ptr_one->prev->tau_next = adjacent ? ptr_two->tau_next : ptr_one->tau_next;
         }
+
+        // the first middle vertex's overlap, restaged in attempt() when its predecessor became canonical
+        if (restage_first_middle) { ptr_one->next->vertex_wf_component = first_middle_overlap; }
 
         // 2. commit reverted state onto ptr_two->prev (merge entry: absorbs ptr_two) - only if
         //    NOT adjacent (already folded into step 1 otherwise), then the pure-revert stretch

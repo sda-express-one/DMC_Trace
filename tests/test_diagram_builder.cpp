@@ -15,11 +15,17 @@
 //    Exp(omega) (mean 1/omega up to the tau_D truncation), external lines annihilation first with span tau_D - t_cre
 //    + t_ann ~ Exp(omega) + Exp(omega) (mean 2/omega), momenta from proposal::PhononMomentum with shape
 //    1/w_spread^2, i.e. <|w|^2 l> = w_spread^2 for every line.
+// 6. Random starts at an external momentum on a symmetry plane, p = (0.1, 0, -0.05), with external lines (AlAs,
+//    C != 0): clean, both end segments bitwise equal (assignMomenta copies the head's k), no closing-basis flip; and
+//    chains from some of them, with every update, stay clean - including when the last external line is removed and
+//    the ends must return to exactly p (diagram_cfg::p_ext).
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <map>
 #include <random>
 #include <set>
+#include <string>
 #include <vector>
 #include "test_common.hpp"
 #include "diagram/diagram_builder.hpp"
@@ -31,6 +37,8 @@
 #include "updates/mv_vertex.hpp"
 #include "updates/chg_ph_momentum.hpp"
 #include "measurements/gs_energy.hpp"
+#include "updates/dmc_update_set.hpp"
+#include <simplemc/mc/kernels.hpp>
 
 enum class Line { internal, ext_ann_first, ext_cre_first };
 
@@ -275,6 +283,42 @@ static void physical_lines(test::Checks & check){
           int_span, 1. / omega, ext_span, 2. / omega, n_ext, w2l, spread * spread);
 }
 
+static void plane_starts(test::Checks & check){
+    test::setLK(test::AlAs);
+    const std::array<double, 3> p {0.1, 0., -0.05};
+    std::map<std::string, double> weights;
+    for (const auto n : update_names) { weights[std::string {n}] = 1.; }
+    for (const auto n : length_changing_updates) { weights[std::string {n}] = 0.; }
+    long built {0}, with_ext {0}, clean {0}, ends_equal {0}, flips {0}, later_dirty {0}, later_checks {0}, later_line_free {0};
+    for (unsigned long long seed {1}; seed <= 200; ++seed) {
+        test::Diagram d {seed, p, 120, 16, {PhononMode{0.5, 2.0}, PhononMode{0.8, 3.0}}, 20.};
+        simplemc::xoshiro256ss b {seed + 1000};
+        const numerical::SanitizeReport rep {diagram_builder::randomDiagram(d.cfg, b, p, 20., {.n_internal_min = 5, .n_internal_max = 20,
+                                                                            .n_external_min = 1, .n_external_max = 4, .w_spread = 1.5})};
+        ++built;
+        if (d.cfg.external_ph_manager->current_length > 0) { ++with_ext; }
+        if (rep.clean()) { ++clean; }
+        if (d.cfg.diagram_head->k == d.cfg.diagram_tail->prev->k) { ++ends_equal; }
+        if (rep.closing_basis_dev > 1e-6) { ++flips; }
+        if (seed <= 10) {
+            dmc_update_set us {makeUpdateSet(&d.cfg, &d.rng, weights)};
+            simplemc::metropolis_kernel k {us};
+            for (int i {0}; i < 50000; ++i) {
+                k.step(d.rng);
+                if (i % 250 == 249) {
+                    ++later_checks;
+                    if (d.cfg.external_ph_manager->current_length == 0) { ++later_line_free; }
+                    if (!numerical::sanitizeDiagram(&d.cfg).clean()) { ++later_dirty; }
+                }
+            }
+        }
+    }
+    check(clean == built && with_ext == built && ends_equal == built && flips == 0 && later_dirty == 0 && later_line_free > 100,
+          "random starts at p = (0.1, 0, -0.05) on a symmetry plane (C != 0): %ld/%ld with external lines clean, ends bitwise equal %ld, "
+          "closing flips %ld; 10 chains of 5e4 steps: %ld/%ld checks dirty (%ld of them without external lines)",
+          clean, built, ends_equal, flips, later_dirty, later_checks, later_line_free);
+}
+
 int main(){
     test::Checks check {"diagram_builder"};
     test::setLK(test::AlAs);
@@ -283,5 +327,6 @@ int main(){
     random_diagrams(check);
     random_starts(check);
     physical_lines(check);
+    plane_starts(check);
     return check.exit_code();
 }

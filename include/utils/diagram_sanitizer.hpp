@@ -59,6 +59,13 @@ namespace numerical {
                                         // overlap, which is exact only if these coincide
         int vertices {0};               // vertices walked, head and tail included
 
+        // the two end segments (head, tail->prev) carry the same momentum p - sum of the external w: their difference
+        // (rounding level with external lines, exactly 0 without)
+        double end_momentum_dev {0.};
+        // no external line, but an end segment's k is not bitwise the external momentum p (diagram_cfg::p_ext): the
+        // ends' bases may then differ by a gauge flip on a symmetry plane of p, and the trace closes wrongly
+        bool ends_not_at_p {false};
+
         double trace_before {0.};       // diagram_head->right_component.trace() as found
         double trace_after {0.};        // ... after the rebuild
 
@@ -79,6 +86,7 @@ namespace numerical {
                 && max_shift_dev <= tol.exact
                 && max_ph_action_dev <= tol.exact
                 && closing_basis_dev <= tol.flip
+                && end_momentum_dev <= tol.momentum && !ends_not_at_p
                 && !sign_mismatch
                 && relativeTraceChange() <= tol.flip;
         }
@@ -198,6 +206,8 @@ namespace numerical {
         if (tail->prev != head) {
             rep.closing_basis_dev = (tail->prev->baseWF - head->baseWF).cwiseAbs().maxCoeff();
         }
+        for (int a {0}; a < 3; ++a) { rep.end_momentum_dev = std::max(rep.end_momentum_dev, std::abs(tail->prev->k[a] - head->k[a])); }
+        rep.ends_not_at_p = cfg->endsAtP() && (head->k != cfg->p_ext || tail->prev->k != cfg->p_ext);
 
         // phonon propagators, cached on both ends of each line (chg_ph_energy reads them): the even
         // slot of each pair is the line's creation vertex, the length wraps for an external line

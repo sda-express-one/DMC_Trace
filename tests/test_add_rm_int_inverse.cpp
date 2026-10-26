@@ -12,7 +12,11 @@
 // X is taken from a chain running all updates. Configurations that must be exercised: the new line with
 // and without vertices inside it, and X with and without other internal lines and external lines.
 // After each accepted add and remove the diagram must also pass the sanitizer.
+//
+// Run at a generic external momentum and at one on a symmetry plane, p = (0.1, 0, -0.05), where rm_int_ph's merges
+// at the end of the diagram and next to the removed pair recompute the affected overlaps (a gauge flip otherwise).
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -25,11 +29,8 @@
 #include "updates/mv_vertex.hpp"
 #include "updates/chg_tau.hpp"
 
-int main(){
-    test::Checks check {"add_int_ph x rm_int_ph ratio product"};
-    test::setLK(test::AlAs);
-
-    test::Diagram d {4242ULL, {0.11, -0.07, 0.05}, 24, 8};
+static void ratio_products(test::Checks & check, const std::array<double, 3> & p_ext, const char * label){
+    test::Diagram d {4242ULL, p_ext, 24, 8};
     diagram_cfg * cfg {&d.cfg};
     add_int_ph_update addi {cfg, &d.rng};  rm_int_ph_update rmi {cfg, &d.rng};
     add_ext_ph_update adde {cfg, &d.rng};  rm_ext_ph_update rme {cfg, &d.rng};
@@ -94,14 +95,21 @@ int main(){
         if (!numerical::sanitizeDiagram(cfg).clean()) { ++dirty; }
     }
 
-    check(pairs == PAIRS && gave_up == 0, "collected %ld add/remove pairs (rm_int_ph always reached the new line)", pairs);
+    check(pairs == PAIRS && gave_up == 0, "%s: collected %ld add/remove pairs (rm_int_ph always reached the new line)", label, pairs);
     // tolerance: rounding, amplified when the 3x3 trace cancels (up to ~1e-12 seen, at a cancellation
     // |R|_max / |tr R| ~ 300); an off-by-one in a counting factor gives at least 1/2
     for (int k {0}; k < 3; ++k) {
-        check(n[k] >= 50 && worst[k] < 1e-10, "%s %6ld pairs   max |R_add * R_rm - 1| = %.1e", name[k], n[k], worst[k]);
+        check(n[k] >= 50 && worst[k] < 1e-10, "%s: %s %6ld pairs   max |R_add * R_rm - 1| = %.1e", label, name[k], n[k], worst[k]);
     }
     check(x_with_internal >= 500 && x_with_external >= 200,
           "X varied: %ld with other internal lines (up to %ld), %ld with external lines", x_with_internal, max_lines, x_with_external);
-    check(dirty == 0, "sanitizer clean after every accepted add and remove (%ld dirty)", dirty);
+    check(dirty == 0, "%s: sanitizer clean after every accepted add and remove (%ld dirty)", label, dirty);
+}
+
+int main(){
+    test::Checks check {"add_int_ph x rm_int_ph ratio product"};
+    test::setLK(test::AlAs);
+    ratio_products(check, {0.11, -0.07, 0.05}, "generic p");
+    ratio_products(check, {0.1, 0., -0.05}, "p on a symmetry plane");
     return check.exit_code();
 }

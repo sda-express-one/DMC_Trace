@@ -1,5 +1,6 @@
 #include "diagram/diagram_config.hpp"
 #include <cassert>
+#include "diagram/vertex_manager.hpp"
 
 diagram_cfg::diagram_cfg(
     std::array<double, 3> k_init,
@@ -16,7 +17,8 @@ diagram_cfg::diagram_cfg(
         max_order_ext(external_ph_manager->max_length),
         max_vertices(max_order_int + max_order_ext + 2),
         tau_max(tau_max),
-        chem_pot(chem_pot)
+        chem_pot(chem_pot),
+        p_ext(k_init)
 {
     assert(this->chem_pot <= 0);      // 0 only for fixed-length runs (e^{mu tau_D} constant), < 0 otherwise
     assert(internal_ph_manager != nullptr);
@@ -47,6 +49,10 @@ diagram_cfg::diagram_cfg(
     diagram_tail->next = nullptr;
 };
 
+bool diagram_cfg::endsAtP() const {
+    return external_ph_manager->current_length == 0;
+}
+
 diagram_cfg::~diagram_cfg(){
     delete[] vertex_pool;
 }
@@ -64,6 +70,7 @@ diagram_cfg::diagram_cfg(diagram_cfg&& other) noexcept :
     max_vertices(other.max_vertices),
     tau_max(other.tau_max),
     chem_pot(other.chem_pot),
+    p_ext(other.p_ext),
     current_tau_length(other.current_tau_length),
     current_sign(other.current_sign),
     n_negative(other.n_negative)

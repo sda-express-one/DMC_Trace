@@ -9,7 +9,12 @@
 //
 // Also checks that no update ever returns a non-finite ratio, and that every update was actually
 // exercised (accepted often enough, with internal and external lines both present at some point).
+//
+// Two external momenta: a generic one, and one on a symmetry plane, p = (0.1, 0, -0.05). There a rounding residual
+// in an end segment's k flips the LK gauge and the trace closes on mismatched bases; the sanitizer's invariant
+// (both ends bitwise equal, and exactly p without external lines: diagram_cfg::p_ext) must hold after every move.
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -33,11 +38,14 @@ int main(){
     const char * name[11] {"add_int", "rm_int", "add_ext", "rm_ext", "swp", "mv_tau", "chg_tau", "chg_w", "chg_ph_e", "str_diag", "scl_diag"};
     const long min_accepted[11] {500, 500, 300, 300, 30, 1000, 10000, 1000, 1000, 1000, 1000};
     long accepted[11] {}, nonfinite[11] {}, dirty[11] {};
-    long sanitized {0}, with_external {0}, max_internal {0}, max_external {0};
+    long sanitized {0}, with_external {0}, max_internal {0}, max_external {0}, on_plane_line_free {0};
     double worst_overlap {0.}, worst_trace {0.};
 
-    for (unsigned long long seed : {12345ULL, 777ULL}) {
-        test::Diagram d {seed, {0.11, -0.07, 0.05}, 24, 8, {PhononMode{0.5, 2.0}, PhononMode{0.8, 3.0}}};
+    const std::array<double, 3> momenta[2] {{0.11, -0.07, 0.05}, {0.1, 0., -0.05}};
+    for (int run {0}; run < 4; ++run) {
+        const unsigned long long seed {run % 2 == 0 ? 12345ULL : 777ULL};
+        const std::array<double, 3> & p_ext {momenta[run / 2]};
+        test::Diagram d {seed, p_ext, 24, 8, {PhononMode{0.5, 2.0}, PhononMode{0.8, 3.0}}};
         diagram_cfg * cfg {&d.cfg};
         add_int_ph_update addi {cfg, &d.rng};  rm_int_ph_update rmi {cfg, &d.rng};
         add_ext_ph_update adde {cfg, &d.rng};  rm_ext_ph_update rme {cfg, &d.rng};
@@ -66,6 +74,7 @@ int main(){
             worst_overlap = std::max(worst_overlap, rep.max_overlap_dev);
             worst_trace = std::max(worst_trace, rep.relativeTraceChange());
             if (d.external.current_length > 0) { ++with_external; }
+            else if (run >= 2) { ++on_plane_line_free; }
             max_internal = std::max<long>(max_internal, d.internal.current_length / 2);
             max_external = std::max<long>(max_external, d.external.current_length / 2);
         }
@@ -76,9 +85,9 @@ int main(){
               "%-8s accepted %6ld (need >= %ld)   dirty after it %ld   non-finite ratios %ld",
               name[i], accepted[i], min_accepted[i], dirty[i], nonfinite[i]);
     }
-    check(max_internal >= 3 && max_external >= 2 && with_external > 1000,
-          "configurations exercised: up to %ld internal / %ld external lines, %ld sanitized states with external lines",
-          max_internal, max_external, with_external);
+    check(max_internal >= 3 && max_external >= 2 && with_external > 1000 && on_plane_line_free > 10000,
+          "configurations exercised: up to %ld internal / %ld external lines, %ld sanitized states with external lines, "
+          "%ld without external lines at p = (0.1, 0, -0.05) on a symmetry plane", max_internal, max_external, with_external, on_plane_line_free);
     check(worst_overlap < 1e-12 && worst_trace < 1e-12,
           "cached state exact across %ld sanitizer runs (worst overlap deviation %.1e, worst relative trace change %.1e)",
           sanitized, worst_overlap, worst_trace);

@@ -26,6 +26,16 @@ struct diagram_cfg {
     const double tau_max {50.};
     const double chem_pot {-1.};
 
+    // The external momentum p. With no external phonon line the head and the last segment (diagram_tail->prev) carry
+    // exactly p, bitwise, and the basis diagonalizeLKHamiltonian(p): the trace closes without an overlap between
+    // them, which is exact only if their bases coincide, and on a symmetry plane of p (a zero component) the LK sign
+    // gauge would flip for a rounding residual such as (p - w) + w. diagram_builder::assignMomenta and rm_external_ph
+    // (removing the last external line) restore it; the sanitizer checks it (ends_not_at_p).
+    const std::array<double, 3> p_ext {0., 0., 0.};
+
+    // true when the ends must carry exactly p: no external phonon line
+    bool endsAtP() const;
+
     double current_tau_length {1.};
 
     // Sign of the current diagram, sign(diagram_head->right_component.trace()) (every other factor of

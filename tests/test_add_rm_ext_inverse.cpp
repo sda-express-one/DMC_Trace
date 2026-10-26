@@ -8,6 +8,10 @@
 // removing the line just added. Every configuration class must be exercised:
 //   case 1 (annihilation first) / case 2 (creation first), with and without vertices inside the line.
 // After each accepted add and remove the diagram must also pass the sanitizer.
+//
+// Run at a generic external momentum and at one on a symmetry plane, p = (0.1, 0, -0.05): removing the only line
+// must restore the end segments to exactly p (diagram_cfg::p_ext), so that R_rm sees the same W(X) R_add started
+// from, bitwise in the ends' bases.
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -22,11 +26,8 @@
 #include "updates/mv_vertex.hpp"
 #include "updates/chg_tau.hpp"
 
-int main(){
-    test::Checks check {"add_ext_ph x rm_ext_ph ratio product"};
-    test::setLK(test::AlAs);
-
-    test::Diagram d {2024ULL, {0.11, -0.07, 0.05}, 24, 2};    // room for exactly one external line
+static void ratio_products(test::Checks & check, const std::array<double, 3> & p_ext, const char * label){
+    test::Diagram d {2024ULL, p_ext, 24, 2};    // room for exactly one external line
     diagram_cfg * cfg {&d.cfg};
     add_int_ph_update addi {cfg, &d.rng};  rm_int_ph_update rmi {cfg, &d.rng};  swp_ph_update swp {cfg, &d.rng};
     mv_tau_update mv {cfg, &d.rng};         chg_tau_update ch {cfg, &d.rng};
@@ -71,10 +72,17 @@ int main(){
         if (!numerical::sanitizeDiagram(cfg).clean()) { ++dirty; }
     }
 
-    check(pairs == PAIRS, "collected %ld add/remove pairs (X with up to %ld internal lines)", pairs, max_internal);
+    check(pairs == PAIRS, "%s: collected %ld add/remove pairs (X with up to %ld internal lines)", label, pairs, max_internal);
     for (int k {0}; k < 4; ++k) {
-        check(n[k] >= 50 && worst[k] < 1e-10, "%-30s %6ld pairs   max |R_add * R_rm - 1| = %.1e", name[k], n[k], worst[k]);
+        check(n[k] >= 50 && worst[k] < 1e-10, "%s: %-30s %6ld pairs   max |R_add * R_rm - 1| = %.1e", label, name[k], n[k], worst[k]);
     }
-    check(dirty == 0, "sanitizer clean after every accepted add and remove (%ld dirty)", dirty);
+    check(dirty == 0, "%s: sanitizer clean after every accepted add and remove (%ld dirty)", label, dirty);
+}
+
+int main(){
+    test::Checks check {"add_ext_ph x rm_ext_ph ratio product"};
+    test::setLK(test::AlAs);
+    ratio_products(check, {0.11, -0.07, 0.05}, "generic p");
+    ratio_products(check, {0.1, 0., -0.05}, "p on a symmetry plane");
     return check.exit_code();
 }

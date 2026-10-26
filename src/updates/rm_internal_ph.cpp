@@ -50,21 +50,40 @@ double rm_int_ph_update::attempt(){
 
     Vertex * ptr_prev = ptr_one->prev;
 
+    // Adjacent pair ending at the last vertex: ptr_prev absorbs both and becomes the LAST segment. Its own k is an
+    // interior value (physically the end momentum, numerically with the rounding of the lines that ended before
+    // it), so it takes the head's k, basis and masses instead: the two ends must stay bitwise equal (diagram_cfg::
+    // p_ext). Its overlap with its predecessor then changes too: staged here, used in the ratio, committed in accept().
+    merged_is_last = ptr_one->next == ptr_two && ptr_two->next == cfg->diagram_tail && ptr_prev != cfg->diagram_head;
+    if (merged_is_last) {
+        last_overlap = Coupling::LKOverlap::computeMatrix(ptr_prev->prev->baseWF, cfg->diagram_head->baseWF);
+    }
+    // Adjacent pair with a vertex after it: that vertex's cached overlap is with ptr_two's basis, but its new
+    // predecessor is the merged ptr_prev, whose basis belongs to the same momentum only up to rounding - on a
+    // symmetry plane of the momentum the two bases can differ by a gauge flip. Recomputed, used in the ratio and
+    // committed in accept().
+    restage_successor = ptr_one->next == ptr_two && ptr_two->next != cfg->diagram_tail;
+    if (restage_successor) {
+        const Eigen::Matrix3d & merged_basis {merged_is_last ? cfg->diagram_head->baseWF : ptr_prev->baseWF};
+        successor_overlap = Coupling::LKOverlap::computeMatrix(merged_basis, ptr_two->next->baseWF);
+    }
+
     do {
         weight::ProposedVertexWeight current_new_weight;
         
         if(ptr_one->next == ptr_two){
-            current_new_weight.baseWF = ptr_prev->baseWF;
+            const Vertex * source {merged_is_last ? cfg->diagram_head : ptr_prev};     // see merged_is_last above
+            current_new_weight.baseWF = source->baseWF;
             current_new_weight.vertex_wf_component = Eigen::Matrix3d::Identity();
 
-            p_fin = ptr_prev->k;
+            p_fin = source->k;
             current_new_weight.k = p_fin;
             
             p_fin_sq = p_fin[0]*p_fin[0] + p_fin[1]*p_fin[1] + p_fin[2]*p_fin[2];
 
-            current_new_weight.eff_masses = ptr_prev->eff_masses;
+            current_new_weight.eff_masses = source->eff_masses;
 
-            weight::setSegmentAction(current_new_weight.el_prop_action, current_new_weight.action_shift, p_fin_sq, ptr_prev->eff_masses, ptr_two->tau_next - ptr_prev->tau);
+            weight::setSegmentAction(current_new_weight.el_prop_action, current_new_weight.action_shift, p_fin_sq, source->eff_masses, ptr_two->tau_next - ptr_prev->tau);
 
             proposed_weights.push_back(current_new_weight);
         }
@@ -130,7 +149,9 @@ double rm_int_ph_update::attempt(){
     // the traces are built from band-normalised actions: the full ratio carries e^{-(S' - S)}, S' - S the
     // change of the summed shifts over the replaced segments (applied in the numerator below)
     const double weight_proposed {
-        (new_matrix_product * ptr_two->next->vertex_wf_component * ptr_two->next->right_component * ptr_prev->left_component * ptr_prev->vertex_wf_component).trace()
+        (new_matrix_product * (restage_successor ? successor_overlap : ptr_two->next->vertex_wf_component)
+         * ptr_two->next->right_component * ptr_prev->left_component
+         * (merged_is_last ? last_overlap : ptr_prev->vertex_wf_component)).trace()
     };
 
     const double weight_current {
@@ -187,6 +208,8 @@ void rm_int_ph_update::accept(){
     // both boundary tau_next values are read from ptr_one/ptr_two before either is removed,
     // so nothing here depends on a ->next chain that's still mid-splice.
     ptr_prev->tau_next = adjacent ? ptr_two->tau_next : ptr_one->tau_next;
+    if (merged_is_last) { ptr_prev->vertex_wf_component = last_overlap; }     // it took the head's basis
+    if (restage_successor) { ptr_two->next->vertex_wf_component = successor_overlap; }
 
     Vertex * last_survivor {ptr_prev};
 

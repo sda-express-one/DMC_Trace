@@ -18,6 +18,13 @@ struct rm_int_ph_update {
     SignCounter sign;   // sign of the ratio, negative-diagram count (utils/sign_counter.hpp)
     Vertex * ptr_one {nullptr};
     Vertex * ptr_two {nullptr};
+    // an adjacent pair ending at the last vertex: the merged segment becomes the last one and takes the head's
+    // k/basis (the ends stay bitwise equal); its new overlap with its predecessor
+    bool merged_is_last {false};
+    Eigen::Matrix3d last_overlap {Eigen::Matrix3d::Identity()};
+    // an adjacent pair with a vertex after it: that vertex's overlap with the merged segment, recomputed
+    bool restage_successor {false};
+    Eigen::Matrix3d successor_overlap {Eigen::Matrix3d::Identity()};
     // the proposal add_int_ph draws w from, for the reverse density
     proposal::PhononMomentum w_proposal {};
 

@@ -54,5 +54,11 @@ numerical::SanitizeReport restoreDiagram(diagram_cfg & cfg, const DiagramState &
     }
     std::size_t i {0};
     for (Vertex * v {cfg.diagram_head}; v != cfg.diagram_tail; v = v->next) { v->k = state.k[i++]; }
+    // without external lines the ends carry exactly p (diagram_cfg::p_ext): repairs states saved before the end
+    // segments were kept canonical (a rounding-level change)
+    if (cfg.endsAtP()) {
+        cfg.diagram_head->k = cfg.p_ext;
+        cfg.diagram_tail->prev->k = cfg.p_ext;
+    }
     return diagram_builder::finalize(cfg);
 }
