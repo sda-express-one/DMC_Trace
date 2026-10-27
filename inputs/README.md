@@ -122,6 +122,7 @@ in a row, or at `max_steps`. In the second case production runs anyway, and `<pr
 | `min_bulk_ess_per_split_chain`, `min_tail_ess_per_split_chain` | 50, 50 | floor per split chain (each rank counts as 2): the requirement is max(total, floor × split chains), so the floor decides above 4 ranks |
 | `max_ess_fraction` | 0.5 | warn (never reject) when the required ESS exceeds this fraction r of the draws in the window after a merge: passing then needs ~1/(1−r) times the intended information, and each merge can reset `consecutive`. The warning gives the `monitor_n_batches` that fixes it |
 | `consecutive` | 5 | checkpoints in a row that must pass |
+| `live_every` | 1 | print an R̂ block (R̂ bulk and folded, ESS bulk / tail, ok or the failed tests, per scalar) every `live_every` checkpoints; 0 turns it off. The checkpoint that ends thermalization is always printed |
 | `root` | 0 | rank that evaluates R̂ |
 | `max_steps` | 1e9 | cap per chain |
 | `checkpoint_interval` | 1e6 | steps between checkpoints; it must be a multiple of `steps_per_cycle` × `cycles_per_check` |
@@ -142,7 +143,13 @@ The outputs are:
 - `<prefix>_thermalization.dat`, the R̂ history: one row per checkpoint and monitored scalar, with columns
   `checkpoint steps batches scalar rhat rhat_bulk rhat_fold ess_bulk ess_tail rhat_ok bulk_ok tail_ok pass consecutive`.
   The `*_ok` flags are this scalar's three tests, `pass` is the whole checkpoint (every scalar ok); the header gives
-  the ESS actually required for the number of split chains;
+  the ESS actually required for the number of split chains. The file is appended and flushed at every checkpoint
+  (`tail -f` works, and a job killed by the wall time keeps its history); the `# thermalized:` status line is
+  written last;
+- `<prefix>_rhat.dat`, the same history for plotting: one numeric row per checkpoint, `checkpoint steps batches`,
+  then `<scalar>_rbulk <scalar>_rfold <scalar>_essb <scalar>_esst` for each monitored scalar, then `pass
+  consecutive`. The first line holds the column names after `#`, so `numpy.genfromtxt(path, names=True)` reads it
+  (`d['n_ext_rbulk']`); `nan` before the window exists. Also appended live;
 - `<prefix>_run.dat`, with the input, the run statistics, the negative-sign fraction and the update acceptances;
 - `<prefix>_input.json`, the full input actually used.
 

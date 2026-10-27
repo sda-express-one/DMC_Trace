@@ -44,6 +44,7 @@ thermalization_control::~thermalization_control(){
     // time cap the last gather/broadcast are still open: complete them (every rank destroys its controller)
     if (gather_req_ != MPI_REQUEST_NULL) { MPI_Wait(&gather_req_, MPI_STATUS_IGNORE); }
     if (bcast_req_ != MPI_REQUEST_NULL) { MPI_Wait(&bcast_req_, MPI_STATUS_IGNORE); }
+    closeLog();
 }
 
 void thermalization_control::checkpoint(const convergence_monitor & monitor, std::uint64_t steps){
@@ -96,6 +97,7 @@ void thermalization_control::checkpoint(const std::vector<double> & window, std:
         const Record rec {evaluate(windows, b, steps)};
         const int stop {rec.consecutive >= opt_.consecutive ? 1 : (MPI_Wtime() >= deadline_ ? 2 : 0)};
         decision_ = {stop, rec.consecutive};
+        history_.back().decision = stop;
     }
     MPI_Ibcast(decision_.data(), 2, MPI_INT, opt_.root, comm_, &bcast_req_);
 }
@@ -125,6 +127,7 @@ thermalization_control::Record thermalization_control::evaluate(const std::vecto
     rec.pass = pass;
     rec.consecutive = consecutive_;
     history_.push_back(rec);
+    appendLive(rec);
     return rec;
 }
 
@@ -140,33 +143,119 @@ thermalization_control::ScalarCheck thermalization_control::check(const measurem
     return s;
 }
 
-void thermalization_control::write(const std::string & path) const {
-    FILE * f {std::fopen(path.c_str(), "w")};
-    if (f == nullptr) { throw std::runtime_error("thermalization_control::write: cannot open " + path); }
+void thermalization_control::writeHeader(std::FILE * f) const {
     std::fprintf(f, "# thermalization: R-hat convergence test (Vehtari et al. 2021), %d chains\n", size_);
     std::fprintf(f, "# rhat_max = %.4f   min bulk/tail-ESS = max(%.1f, %.1f x split chains) / max(%.1f, %.1f x split chains)   consecutive = %d\n",
                  opt_.rhat_max, opt_.min_bulk_ess, opt_.min_bulk_ess_per_split_chain, opt_.min_tail_ess, opt_.min_tail_ess_per_split_chain,
                  opt_.consecutive);
-    std::fprintf(f, "# thermalized: %s\n", thermalized() ? "yes"
-                 : timedOut() ? "no - stopped by the wall-time budget" : "no (not yet, or the step cap ended the run)");
-    // the requirement as applied: the split-chain count comes from the windows (the last evaluation that had any)
-    for (auto it {history_.rbegin()}; it != history_.rend(); ++it) {
-        if (it->results.empty() || it->results.front().chains <= 0) { continue; }
-        const ScalarCheck & s {it->checks.front()};
-        std::fprintf(f, "# required ESS with %d split chains: bulk >= %.1f, tail >= %.1f\n", it->results.front().chains,
-                     s.bulk_required, s.tail_required);
-        break;
-    }
     std::fprintf(f, "# columns: checkpoint steps batches scalar rhat rhat_bulk rhat_fold ess_bulk ess_tail rhat_ok bulk_ok tail_ok pass consecutive\n"
                     "#   (*_ok: this scalar's tests; pass: every scalar passed at this checkpoint)\n");
-    for (const Record & r : history_) {
-        for (std::size_t k {0}; k < names_.size(); ++k) {
-            const measurement::ConvergenceResult & c {r.results[k]};
-            const ScalarCheck & s {r.checks[k]};
-            std::fprintf(f, "%d %llu %zu %s %.6f %.6f %.6f %.1f %.1f %d %d %d %d %d\n", r.checkpoint, static_cast<unsigned long long>(r.steps),
-                         r.batches, names_[k].c_str(), c.rhat, c.rhat_bulk, c.rhat_fold, c.ess_bulk, c.ess_tail,
-                         s.rhat_ok ? 1 : 0, s.bulk_ok ? 1 : 0, s.tail_ok ? 1 : 0, r.pass ? 1 : 0, r.consecutive);
-        }
+}
+
+void thermalization_control::writeRequired(std::FILE * f, const Record & r) const {
+    // the requirement as applied: the split-chain count comes from the windows
+    std::fprintf(f, "# required ESS with %d split chains: bulk >= %.1f, tail >= %.1f\n", r.results.front().chains,
+                 r.checks.front().bulk_required, r.checks.front().tail_required);
+}
+
+void thermalization_control::writeRows(std::FILE * f, const Record & r) const {
+    for (std::size_t k {0}; k < names_.size(); ++k) {
+        const measurement::ConvergenceResult & c {r.results[k]};
+        const ScalarCheck & s {r.checks[k]};
+        std::fprintf(f, "%d %llu %zu %s %.6f %.6f %.6f %.1f %.1f %d %d %d %d %d\n", r.checkpoint, static_cast<unsigned long long>(r.steps),
+                     r.batches, names_[k].c_str(), c.rhat, c.rhat_bulk, c.rhat_fold, c.ess_bulk, c.ess_tail,
+                     s.rhat_ok ? 1 : 0, s.bulk_ok ? 1 : 0, s.tail_ok ? 1 : 0, r.pass ? 1 : 0, r.consecutive);
     }
+}
+
+void thermalization_control::writeStatus(std::FILE * f) const {
+    std::fprintf(f, "# thermalized: %s\n", thermalized() ? "yes"
+                 : timedOut() ? "no - stopped by the wall-time budget" : "no (not yet, or the step cap ended the run)");
+}
+
+void thermalization_control::write(const std::string & path) const {
+    std::FILE * f {std::fopen(path.c_str(), "w")};
+    if (f == nullptr) { throw std::runtime_error("thermalization_control::write: cannot open " + path); }
+    writeHeader(f);
+    bool required {false};
+    for (const Record & r : history_) {
+        if (!required && r.hasWindow()) { writeRequired(f, r); required = true; }
+        writeRows(f, r);
+    }
+    writeStatus(f);
     std::fclose(f);
+}
+
+void thermalization_control::openLog(const std::string & path, const std::string & raw_path){
+    closeLog();
+    log_ = std::fopen(path.c_str(), "w");
+    if (log_ == nullptr) { throw std::runtime_error("thermalization_control::openLog: cannot open " + path); }
+    writeHeader(log_);
+    std::fflush(log_);
+    required_logged_ = false;
+    if (raw_path.empty()) { return; }
+    raw_ = std::fopen(raw_path.c_str(), "w");
+    if (raw_ == nullptr) { throw std::runtime_error("thermalization_control::openLog: cannot open " + raw_path); }
+    // the column names first (numpy.genfromtxt(names=True) takes them from the first line), then the description
+    std::fprintf(raw_, "# checkpoint steps batches");
+    for (const std::string & n : names_) { std::fprintf(raw_, " %s_rbulk %s_rfold %s_essb %s_esst", n.c_str(), n.c_str(), n.c_str(), n.c_str()); }
+    std::fprintf(raw_, " pass consecutive\n");
+    std::fprintf(raw_, "# R-hat thermalization history, one row per checkpoint: steps per chain, batch means per chain in the window, then "
+                       "per scalar the rank-normalised split R-hat (bulk), the folded one, bulk-ESS and tail-ESS; nan without a window\n");
+    std::fprintf(raw_, "# rhat_max = %.4f   consecutive = %d   %d chains\n", opt_.rhat_max, opt_.consecutive, size_);
+    std::fflush(raw_);
+}
+
+void thermalization_control::appendLive(const Record & r){
+    if (!required_logged_ && r.hasWindow()) {
+        if (log_ != nullptr) { writeRequired(log_, r); }
+        if (raw_ != nullptr) {
+            std::fprintf(raw_, "# required ESS bulk/tail = %.1f %.1f (%d split chains)\n", r.checks.front().bulk_required,
+                         r.checks.front().tail_required, r.results.front().chains);
+        }
+        required_logged_ = true;
+    }
+    if (log_ != nullptr) {
+        writeRows(log_, r);
+        std::fflush(log_);
+    }
+    if (raw_ != nullptr) {
+        std::fprintf(raw_, "%d %llu %zu", r.checkpoint, static_cast<unsigned long long>(r.steps), r.batches);
+        for (const measurement::ConvergenceResult & c : r.results) {
+            std::fprintf(raw_, " %.6f %.6f %.1f %.1f", c.rhat_bulk, c.rhat_fold, c.ess_bulk, c.ess_tail);
+        }
+        std::fprintf(raw_, " %d %d\n", r.pass ? 1 : 0, r.consecutive);
+        std::fflush(raw_);
+    }
+}
+
+void thermalization_control::closeLog(){
+    if (log_ != nullptr) {
+        writeStatus(log_);
+        std::fclose(log_);
+        log_ = nullptr;
+    }
+    if (raw_ != nullptr) {
+        std::fclose(raw_);
+        raw_ = nullptr;
+    }
+}
+
+void thermalization_control::printRecord(std::FILE * f, const Record & rec) const {
+    const char * decision {rec.decision == 1 ? "  -> thermalized" : rec.decision == 2 ? "  -> wall-time budget reached" : ""};
+    std::fprintf(f, "[thermalization] checkpoint %d  steps/chain %.3e  batches %zu  pass %d  consecutive %d/%d", rec.checkpoint,
+                 static_cast<double>(rec.steps), rec.batches, rec.pass ? 1 : 0, rec.consecutive, opt_.consecutive);
+    if (!rec.hasWindow()) {
+        std::fprintf(f, "  no window yet (batches %zu < 8)%s\n", rec.batches, decision);
+        return;
+    }
+    std::fprintf(f, "  required ESS %.0f/%.0f%s\n", rec.checks.front().bulk_required, rec.checks.front().tail_required, decision);
+    int width {0};
+    for (const std::string & n : names_) { width = std::max(width, static_cast<int>(n.size())); }
+    for (std::size_t k {0}; k < names_.size(); ++k) {
+        const measurement::ConvergenceResult & c {rec.results[k]};
+        const ScalarCheck & s {rec.checks[k]};
+        std::fprintf(f, "    %-*s  R_bulk %.4f  R_fold %.4f  ESS %7.0f / %7.0f  %s%s%s%s\n", width, names_[k].c_str(), c.rhat_bulk, c.rhat_fold,
+                     c.ess_bulk, c.ess_tail, s.ok() ? "ok" : "FAIL", s.rhat_ok ? "" : " rhat", s.bulk_ok ? "" : " bulk", s.tail_ok ? "" : " tail");
+    }
 }

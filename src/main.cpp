@@ -5,7 +5,8 @@
 // then the production run measures the active estimators, the ranks are combined and the root writes
 //     <prefix>_<estimator>.dat   one per active estimator (its write())
 //     <prefix>_<estimator>_chains.dat  gs_energy, eff_mass, eff_mass_uniaxial, avg_sign: every chain's own value and error
-//     <prefix>_thermalization.dat  the R-hat checkpoints
+//     <prefix>_thermalization.dat  the R-hat checkpoints, per scalar (appended live)
+//     <prefix>_rhat.dat            the same, one numeric row per checkpoint for plotting
 //     <prefix>_run.dat           input, run parameters, update statistics, sign, thermalization outcome
 //     <prefix>_input.json        the input actually used (every key, defaults filled in)
 // Without an argument, or with a file that does not exist, the root writes the default input to that path
@@ -291,18 +292,30 @@ namespace {
                             floor_sets ? "" : ", or more ranks");
             }
             ctl.setDeadline(t0 + budget);
+            if (root) { ctl.openLog(outPath(in, "thermalization.dat"), outPath(in, "rhat.dat")); }     // appended live
             const simplemc::simulation_params tp {in.thermalizationParams()};
             simplemc::progress_printer printer {progress("[thermalization]", tp.max_steps, 0., root)};
             const simplemc::simulation_ctx ctx {simplemc::run(chain.rng, kernel, therm, tp, simplemc::run_callbacks {
                 .on_cycle = [&](const simplemc::simulation_ctx & c){ printer(c); },
-                .on_checkpoint = [&](const simplemc::simulation_ctx & c){ ctl.checkpoint(mon, c.steps_done); },
+                .on_checkpoint = [&](const simplemc::simulation_ctx & c){
+                    const std::size_t seen {ctl.history().size()};      // the root's: a new record = an evaluation here
+                    ctl.checkpoint(mon, c.steps_done);
+                    const int every {in.thermalization.live_every};
+                    if (root && every > 0 && ctl.history().size() > seen) {
+                        const auto & rec {ctl.history().back()};
+                        if (rec.checkpoint % every == 0 || rec.decision != 0) {
+                            ctl.printRecord(stdout, rec);
+                            std::fflush(stdout);
+                        }
+                    }
+                },
                 .stop_when = [&](const simplemc::simulation_ctx &){ return ctl.stopped(); }})};
             thermalized = ctl.thermalized();
             therm_timed_out = ctl.timedOut();
             therm_steps = ctx.steps_done;
             therm_time = ctx.runtime;
             if (root) {
-                ctl.write(outPath(in, "thermalization.dat"));
+                ctl.closeLog();     // the status line
                 if (thermalized) {
                     std::printf("\ndiagramc: thermalized after %llu steps per chain\n", static_cast<unsigned long long>(therm_steps));
                 }

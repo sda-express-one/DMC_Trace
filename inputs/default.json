@@ -57,6 +57,7 @@
             "consecutive": 5,
             "cycles_per_check": 1000,
             "enabled": true,
+            "live_every": 1,
             "max_ess_fraction": 0.5,
             "max_steps": 1000000000,
             "min_bulk_ess": 400.0,

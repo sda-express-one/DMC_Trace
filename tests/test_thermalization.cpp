@@ -15,6 +15,8 @@
 //    4 chains, the per-split-chain floor for 48; windows of 64 draws per chain (the old 256-batch monitor) fail in
 //    both, 256 draws (the 1024-batch monitor) pass in both. requiredEssFraction / batchesForFraction: the required
 //    ESS as a fraction of the smallest window, and the batch count that brings it under 0.5.
+// 5. Live output: openLog appends each evaluation to the per-scalar log and to the raw numeric file (flushed, the
+//    status line only at closeLog); printRecord shows R-hat bulk/fold, ESS and the failed tests per scalar.
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -312,6 +314,100 @@ static void ess_criterion(test::Checks & check){
     }
 }
 
+static std::vector<std::string> readLines(const std::filesystem::path & f){
+    std::vector<std::string> lines;
+    std::ifstream in {f};
+    for (std::string line; std::getline(in, line);) { lines.push_back(line); }
+    return lines;
+}
+
+static std::vector<std::string> fields(const std::string & line){
+    std::istringstream ss {line};
+    std::vector<std::string> col;
+    for (std::string x; ss >> x;) { col.push_back(x); }
+    return col;
+}
+
+static void live_output(test::Checks & check){
+    std::mt19937_64 rng {123ULL};
+    std::normal_distribution<double> g {0., 1.};
+    // 8 chains, scalars "good" (iid) and "shifted" (chain c offset by 0.5 c: R-hat fails); a first window of 4 batches
+    const auto window {[&](std::size_t batches){
+        std::vector<std::vector<double>> w(8, std::vector<double>(2 * batches));
+        for (std::size_t c {0}; c < w.size(); ++c) {
+            for (std::size_t b {0}; b < batches; ++b) { w[c][b] = g(rng); w[c][batches + b] = g(rng) + 0.5 * static_cast<double>(c); }
+        }
+        return w;
+    }};
+    const std::filesystem::path dir {std::filesystem::temp_directory_path()};
+    const std::filesystem::path log {dir / "dmc_test_live_thermalization.dat"}, raw {dir / "dmc_test_live_rhat.dat"};
+
+    thermalization_control ctl {MPI_COMM_SELF, {"good", "shifted"}, 1024};
+    ctl.openLog(log.string(), raw.string());
+    ctl.evaluate(window(4), 4, 10);
+    ctl.evaluate(window(256), 256, 20);
+    ctl.evaluate(window(256), 256, 30);
+
+    // before closeLog: the rows are on disk (flushed), the status line is not
+    const std::vector<std::string> mid {readLines(log)};
+    std::size_t rows {0};
+    bool required {false}, status_early {false};
+    for (const auto & l : mid) {
+        if (l.rfind("# required ESS with 16 split chains", 0) == 0) { required = true; }
+        if (l.rfind("# thermalized:", 0) == 0) { status_early = true; }
+        if (!l.empty() && l[0] != '#') { ++rows; }
+    }
+    // raw: names on the first line, 3 + 4 x 2 + 2 = 13 columns, one numeric row per checkpoint, nan without a window
+    const std::vector<std::string> rl {readLines(raw)};
+    const std::vector<std::string> names {rl.empty() ? std::vector<std::string> {} : fields(rl.front())};
+    std::vector<std::vector<std::string>> data;
+    for (const auto & l : rl) { if (!l.empty() && l[0] != '#') { data.push_back(fields(l)); } }
+    bool widths {data.size() == 3};
+    for (const auto & d : data) { widths = widths && d.size() == 13; }
+    const auto & h {ctl.history()};
+    bool values {widths && data[0][3] == "nan"};
+    for (std::size_t i {1}; values && i < 3; ++i) {
+        values = std::abs(std::stod(data[i][3]) - h[i].results[0].rhat_bulk) < 1e-6
+              && std::abs(std::stod(data[i][8]) - h[i].results[1].rhat_fold) < 1e-6
+              && std::abs(std::stod(data[i][5]) - h[i].results[0].ess_bulk) < 0.1
+              && data[i][11] == (h[i].pass ? "1" : "0") && data[i][12] == std::to_string(h[i].consecutive);
+    }
+    const bool raw_names {names.size() == 14 && names[0] == "#" && names[1] == "checkpoint" && names[4] == "good_rbulk"
+                          && names[9] == "shifted_rfold" && names[13] == "consecutive"};
+
+    ctl.closeLog();
+    const std::vector<std::string> fin {readLines(log)};
+    const bool status_last {!fin.empty() && fin.back().rfind("# thermalized: no", 0) == 0};
+    std::filesystem::remove(log);
+    std::filesystem::remove(raw);
+    check(rows == 6 && required && !status_early && status_last,
+          "live log: %zu rows before closeLog (expected 6), required-ESS line %d, status line only after closeLog and last: %d",
+          rows, required ? 1 : 0, (!status_early && status_last) ? 1 : 0);
+    check(raw_names && widths && values,
+          "raw file: column names on the first line %d, 3 rows of 13 numeric columns %d, values match the records (nan before a window) %d",
+          raw_names ? 1 : 0, widths ? 1 : 0, values ? 1 : 0);
+
+    // printRecord
+    std::FILE * f {std::tmpfile()};
+    ctl.printRecord(f, h[2]);
+    ctl.printRecord(f, h[0]);
+    std::rewind(f);
+    std::string text;
+    for (int ch; (ch = std::fgetc(f)) != EOF;) { text.push_back(static_cast<char>(ch)); }
+    std::fclose(f);
+    std::istringstream ts {text};
+    std::vector<std::string> pl;
+    for (std::string l; std::getline(ts, l);) { pl.push_back(l); }
+    const bool block {pl.size() == 4 && pl[0].find("[thermalization] checkpoint 3") == 0 && pl[0].find("consecutive 0/5") != std::string::npos
+                      && pl[0].find("required ESS 800/800") != std::string::npos
+                      && pl[1].find("good") != std::string::npos && pl[1].find("R_bulk") != std::string::npos
+                      && pl[1].find("R_fold") != std::string::npos && pl[1].substr(pl[1].size() - 2) == "ok"
+                      && pl[2].find("shifted") != std::string::npos && pl[2].find("FAIL rhat") != std::string::npos
+                      && pl[3].find("no window yet (batches 4 < 8)") != std::string::npos};
+    check(block, "printRecord: header with consecutive 0/5 and required ESS, 'ok' for the good scalar, 'FAIL rhat' for the shifted one, "
+                 "'no window yet' before 8 batches%s%s", block ? "" : "\n", block ? "" : text.c_str());
+}
+
 int main(int argc, char ** argv){
     MPI_Init(&argc, &argv);
     int rank {0}, size {1};
@@ -320,7 +416,7 @@ int main(int argc, char ** argv){
     int code {0};
     if (rank == 0) {
         test::Checks check {"R-hat thermalization (convergence_monitor, thermalization_control)"};
-        if (size == 1) { options_and_guard(check); in_process(check); deadline(check); ess_criterion(check); }     // once, not on every rank
+        if (size == 1) { options_and_guard(check); in_process(check); deadline(check); ess_criterion(check); live_output(check); }     // once, not on every rank
         mpi_run(check);
         code = check.exit_code();
     }

@@ -179,6 +179,7 @@ int main(){
                "monitor_n_batches = 256 with the default floor: above max_ess_fraction, only warned about (must pass)");
         expect(rejected([](run_input & in){ in.thermalization.max_ess_fraction = 0.; }), "max_ess_fraction = 0");
         expect(rejected([](run_input & in){ in.thermalization.max_ess_fraction = 1.5; }), "max_ess_fraction > 1");
+        expect(rejected([](run_input & in){ in.thermalization.live_every = -1; }), "live_every < 0");
         expect(rejected([](run_input & in){ in.thermalization.checkpoint_interval = 15000; }), "checkpoint interval not a multiple of a check");
         expect(rejected([](run_input & in){ in.model.C_LK = 0.5; in.thermalization.monitor_orbital = true; }), "orbital monitor with C != 0");
         expect(rejected([](run_input & in){ in.start.random_start = true; in.start.n_internal_max = 500; }), "random start beyond the capacity");

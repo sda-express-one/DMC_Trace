@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdio>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -85,6 +86,8 @@ public:
         std::vector<ScalarCheck> checks;                        // parallel to results
         bool pass {false};
         int consecutive {0};
+        int decision {0};                                       // the root's decision: 0 continue, 1 thermalized, 2 deadline
+        bool hasWindow() const { return !results.empty() && results.front().chains > 0; }
     };
 
     thermalization_control(MPI_Comm comm, std::vector<std::string> names, std::size_t max_window_batches, Options opt);
@@ -124,8 +127,23 @@ public:
     bool isRoot() const { return rank_ == opt_.root; }
 
     // root only: one line per evaluation and scalar (checkpoint steps batches scalar R-hat bulk fold ESS_bulk ESS_tail
-    // rhat_ok bulk_ok tail_ok pass consecutive; pass is the whole checkpoint's verdict, the _ok flags this scalar's)
+    // rhat_ok bulk_ok tail_ok pass consecutive; pass is the whole checkpoint's verdict, the _ok flags this scalar's),
+    // the "# thermalized:" status line last
     void write(const std::string & path) const;
+
+    // Live logs (root): openLog writes the headers, every evaluate() then appends its rows to both files and flushes,
+    // closeLog appends the status line to `path` (same layout as write()) and closes both (the destructor too).
+    //   path      the per-scalar log of write()
+    //   raw_path  one numeric row per checkpoint for plotting: the first line is the column names after '#'
+    //             (checkpoint steps batches, then <scalar>_rbulk <scalar>_rfold <scalar>_essb <scalar>_esst per
+    //             scalar, then pass consecutive), so numpy.genfromtxt(raw_path, names=True) reads it; nan without a
+    //             window. Empty raw_path: no raw file.
+    void openLog(const std::string & path, const std::string & raw_path = "");
+    void closeLog();
+
+    // one evaluation as a readable block: a header line (checkpoint, steps per chain, pass, consecutive count, required
+    // ESS, decision) and one line per scalar (R-hat bulk and folded, ESS bulk / tail, ok or the failed tests)
+    void printRecord(std::FILE * f, const Record & rec) const;
 
 private:
     MPI_Comm comm_;
@@ -149,6 +167,16 @@ private:
 
     // the pass rule for one scalar: R-hat < rhat_max, ESS >= max(total, per-split-chain floor x split chains)
     ScalarCheck check(const measurement::ConvergenceResult & r) const;
+
+    // the pieces of the log files (write() and the live logs share them)
+    std::FILE * log_ {nullptr};
+    std::FILE * raw_ {nullptr};
+    bool required_logged_ {false};
+    void writeHeader(std::FILE * f) const;
+    void writeRequired(std::FILE * f, const Record & r) const;
+    void writeRows(std::FILE * f, const Record & r) const;
+    void writeStatus(std::FILE * f) const;
+    void appendLive(const Record & r);
 };
 
 #endif // !THERMALIZATION_CONTROL_HPP
