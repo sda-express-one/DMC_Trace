@@ -138,7 +138,10 @@ The outputs are:
 - `<prefix>_<estimator>_chains.dat` for gs_energy, eff_mass, eff_mass_uniaxial and avg_sign: each chain's (rank's) own value
   and jackknife error, with the mean over the chains and the χ²/dof of the chains around their weighted mean. A
   χ²/dof ≫ 1 flags a chain that disagrees with the others, e.g. a stuck or unthermalized one;
-- `<prefix>_thermalization.dat`, the R̂ history;
+- `<prefix>_thermalization.dat`, the R̂ history: one row per checkpoint and monitored scalar, with columns
+  `checkpoint steps batches scalar rhat rhat_bulk rhat_fold ess_bulk ess_tail rhat_ok bulk_ok tail_ok pass consecutive`.
+  The `*_ok` flags are this scalar's three tests, `pass` is the whole checkpoint (every scalar ok); the header gives
+  the ESS actually required for the number of split chains;
 - `<prefix>_run.dat`, with the input, the run statistics, the negative-sign fraction and the update acceptances;
 - `<prefix>_input.json`, the full input actually used.
 

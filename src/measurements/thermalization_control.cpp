@@ -104,17 +104,26 @@ thermalization_control::Record thermalization_control::evaluate(const std::vecto
         }
         const measurement::ConvergenceResult r {measurement::diagnose(chains)};
         rec.results.push_back(r);
-        // NaN comparisons are false: a scalar without a valid diagnostic never passes
-        const double split {static_cast<double>(r.chains)};
-        const bool ok {r.rhat < opt_.rhat_max && r.ess_bulk >= std::max(opt_.min_bulk_ess, opt_.min_bulk_ess_per_split_chain * split)
-                       && r.ess_tail >= std::max(opt_.min_tail_ess, opt_.min_tail_ess_per_split_chain * split)};
-        pass = pass && ok;
+        rec.checks.push_back(check(r));
+        pass = pass && rec.checks.back().ok();
     }
     consecutive_ = pass ? consecutive_ + 1 : 0;
     rec.pass = pass;
     rec.consecutive = consecutive_;
     history_.push_back(rec);
     return rec;
+}
+
+thermalization_control::ScalarCheck thermalization_control::check(const measurement::ConvergenceResult & r) const {
+    // NaN comparisons are false: a scalar without a valid diagnostic never passes
+    const double split {static_cast<double>(r.chains)};
+    ScalarCheck s;
+    s.bulk_required = std::max(opt_.min_bulk_ess, opt_.min_bulk_ess_per_split_chain * split);
+    s.tail_required = std::max(opt_.min_tail_ess, opt_.min_tail_ess_per_split_chain * split);
+    s.rhat_ok = r.rhat < opt_.rhat_max;
+    s.bulk_ok = r.ess_bulk >= s.bulk_required;
+    s.tail_ok = r.ess_tail >= s.tail_required;
+    return s;
 }
 
 void thermalization_control::write(const std::string & path) const {
@@ -126,12 +135,23 @@ void thermalization_control::write(const std::string & path) const {
                  opt_.consecutive);
     std::fprintf(f, "# thermalized: %s\n", thermalized() ? "yes"
                  : timedOut() ? "no - stopped by the wall-time budget" : "no (not yet, or the step cap ended the run)");
-    std::fprintf(f, "# columns: checkpoint steps batches scalar rhat rhat_bulk rhat_fold ess_bulk ess_tail pass consecutive\n");
+    // the requirement as applied: the split-chain count comes from the windows (the last evaluation that had any)
+    for (auto it {history_.rbegin()}; it != history_.rend(); ++it) {
+        if (it->results.empty() || it->results.front().chains <= 0) { continue; }
+        const ScalarCheck & s {it->checks.front()};
+        std::fprintf(f, "# required ESS with %d split chains: bulk >= %.1f, tail >= %.1f\n", it->results.front().chains,
+                     s.bulk_required, s.tail_required);
+        break;
+    }
+    std::fprintf(f, "# columns: checkpoint steps batches scalar rhat rhat_bulk rhat_fold ess_bulk ess_tail rhat_ok bulk_ok tail_ok pass consecutive\n"
+                    "#   (*_ok: this scalar's tests; pass: every scalar passed at this checkpoint)\n");
     for (const Record & r : history_) {
         for (std::size_t k {0}; k < names_.size(); ++k) {
             const measurement::ConvergenceResult & c {r.results[k]};
-            std::fprintf(f, "%d %llu %zu %s %.6f %.6f %.6f %.1f %.1f %d %d\n", r.checkpoint, static_cast<unsigned long long>(r.steps),
-                         r.batches, names_[k].c_str(), c.rhat, c.rhat_bulk, c.rhat_fold, c.ess_bulk, c.ess_tail, r.pass ? 1 : 0, r.consecutive);
+            const ScalarCheck & s {r.checks[k]};
+            std::fprintf(f, "%d %llu %zu %s %.6f %.6f %.6f %.1f %.1f %d %d %d %d %d\n", r.checkpoint, static_cast<unsigned long long>(r.steps),
+                         r.batches, names_[k].c_str(), c.rhat, c.rhat_bulk, c.rhat_fold, c.ess_bulk, c.ess_tail,
+                         s.rhat_ok ? 1 : 0, s.bulk_ok ? 1 : 0, s.tail_ok ? 1 : 0, r.pass ? 1 : 0, r.consecutive);
         }
     }
     std::fclose(f);

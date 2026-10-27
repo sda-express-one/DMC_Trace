@@ -66,12 +66,23 @@ public:
         int root {0};
     };
 
+    // one scalar's verdict at one evaluation: the three tests and the ESS they required (which grows with the chains)
+    struct ScalarCheck {
+        bool rhat_ok {false};
+        bool bulk_ok {false};
+        bool tail_ok {false};
+        double bulk_required {0.};
+        double tail_required {0.};
+        bool ok() const { return rhat_ok && bulk_ok && tail_ok; }
+    };
+
     // one evaluation (root only), kept for logging
     struct Record {
         int checkpoint {0};
         std::uint64_t steps {0};
         std::size_t batches {0};                                // per rank, in the window
         std::vector<measurement::ConvergenceResult> results;    // one per scalar
+        std::vector<ScalarCheck> checks;                        // parallel to results
         bool pass {false};
         int consecutive {0};
     };
@@ -105,7 +116,8 @@ public:
     const std::vector<std::string> & names() const { return names_; }
     bool isRoot() const { return rank_ == opt_.root; }
 
-    // root only: one line per evaluation and scalar (checkpoint steps batches scalar R-hat bulk fold ESS_bulk ESS_tail pass consecutive)
+    // root only: one line per evaluation and scalar (checkpoint steps batches scalar R-hat bulk fold ESS_bulk ESS_tail
+    // rhat_ok bulk_ok tail_ok pass consecutive; pass is the whole checkpoint's verdict, the _ok flags this scalar's)
     void write(const std::string & path) const;
 
 private:
@@ -127,6 +139,9 @@ private:
     std::vector<double> send_, recv_;
     std::array<int, 2> decision_ {0, 0};
     MPI_Request gather_req_ {MPI_REQUEST_NULL}, bcast_req_ {MPI_REQUEST_NULL};
+
+    // the pass rule for one scalar: R-hat < rhat_max, ESS >= max(total, per-split-chain floor x split chains)
+    ScalarCheck check(const measurement::ConvergenceResult & r) const;
 };
 
 #endif // !THERMALIZATION_CONTROL_HPP

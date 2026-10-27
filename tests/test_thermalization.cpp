@@ -17,6 +17,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <string>
 #include <memory>
 #include <random>
 #include <vector>
@@ -226,10 +230,12 @@ static void ess_criterion(test::Checks & check){
         for (auto & c : w) { for (double & x : c) { x = g(rng); } }
         return w;
     }};
+    thermalization_control::ScalarCheck last {};
     const auto passes {[&](thermalization_control::Options opt, int chains, std::size_t batches, double & ess){
         thermalization_control ctl {MPI_COMM_SELF, {"x"}, 1024, opt};
         const thermalization_control::Record rec {ctl.evaluate(windows(chains, batches), batches, 1)};
         ess = std::min(rec.results[0].ess_bulk, rec.results[0].ess_tail);
+        last = rec.checks[0];
         return rec.pass;
     }};
 
@@ -237,12 +243,56 @@ static void ess_criterion(test::Checks & check){
     double e4s {0.}, e4l {0.}, e48s {0.}, e48l {0.};
     const bool p4s {passes({}, 4, 64, e4s)};       // ESS ~ 256 < 400
     const bool p4l {passes({}, 4, 256, e4l)};      // ESS ~ 1000
+    const thermalization_control::ScalarCheck c4l {last};
     const bool p48s {passes({}, 48, 64, e48s)};    // ESS ~ 3000: above the total, below the floor
+    const thermalization_control::ScalarCheck c48s {last};
     const bool p48l {passes({}, 48, 256, e48l)};   // ESS ~ 12000
     check(!p4s && p4l && !p48s && p48l,
           "ESS criterion (total 400, 50 per split chain): 4 chains x 64 draws, ESS %.0f < 400 fails (%d), x 256, ESS %.0f passes (%d); "
           "48 chains x 64 draws, ESS %.0f < floor 4800 fails (%d), x 256, ESS %.0f passes (%d)",
           e4s, p4s ? 1 : 0, e4l, p4l ? 1 : 0, e48s, p48s ? 1 : 0, e48l, p48l ? 1 : 0);
+    check(c4l.ok() && c4l.bulk_required == 400. && c4l.tail_required == 400.
+              && c48s.rhat_ok && !c48s.bulk_ok && !c48s.tail_ok && c48s.bulk_required == 4800. && c48s.tail_required == 4800.,
+          "per-scalar flags: 4 chains x 256 all ok, required %.0f/%.0f (expected 400); 48 chains x 64 R-hat ok %d, bulk/tail ok %d/%d "
+          "(expected 1, 0/0), required %.0f/%.0f (expected 4800)",
+          c4l.bulk_required, c4l.tail_required, c48s.rhat_ok ? 1 : 0, c48s.bulk_ok ? 1 : 0, c48s.tail_ok ? 1 : 0,
+          c48s.bulk_required, c48s.tail_required);
+
+    // the log: two scalars (one that passes, one that fails R-hat: shifted chains), the required-ESS header, 14 columns
+    // per row, and the flags consistent with the checkpoint's pass
+    {
+        thermalization_control ctl {MPI_COMM_SELF, {"good", "shifted"}, 1024};
+        std::size_t rows {0}, bad_rows {0};
+        bool header {false}, flags_seen {false};
+        for (int cp {0}; cp < 2; ++cp) {
+            std::vector<std::vector<double>> w(8, std::vector<double>(2 * 256));
+            for (std::size_t c {0}; c < w.size(); ++c) {
+                for (std::size_t b {0}; b < 256; ++b) { w[c][b] = g(rng); w[c][256 + b] = g(rng) + 0.5 * static_cast<double>(c); }
+            }
+            ctl.evaluate(w, 256, static_cast<std::uint64_t>(cp + 1));
+        }
+        const std::filesystem::path f {std::filesystem::temp_directory_path() / "dmc_test_thermalization_log.dat"};
+        ctl.write(f.string());
+        std::ifstream in {f};
+        for (std::string line; std::getline(in, line);) {
+            if (line.rfind("# required ESS with 16 split chains: bulk >= 800.0, tail >= 800.0", 0) == 0) { header = true; }
+            if (line.empty() || line[0] == '#') { continue; }
+            std::istringstream ss {line};
+            std::vector<std::string> col;
+            for (std::string x; ss >> x;) { col.push_back(x); }
+            ++rows;
+            if (col.size() != 14) { ++bad_rows; continue; }
+            const bool all_ok {col[9] == "1" && col[10] == "1" && col[11] == "1"};
+            if (col[12] == "1" && !all_ok) { ++bad_rows; }
+            // the good scalar passes everything; the shifted one fails R-hat (its ESS is fine)
+            if (col[3] == "good" && !all_ok) { ++bad_rows; }
+            if (col[3] == "shifted") { flags_seen = col[9] == "0" && col[12] == "0"; }
+        }
+        std::filesystem::remove(f);
+        check(header && rows == 4 && bad_rows == 0 && flags_seen,
+              "thermalization log: required-ESS header %d, %zu rows (expected 4), %zu inconsistent or not 14 columns, "
+              "shifted scalar logged with rhat_ok 0 and pass 0: %d", header ? 1 : 0, rows, bad_rows, flags_seen ? 1 : 0);
+    }
 }
 
 int main(int argc, char ** argv){
