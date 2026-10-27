@@ -134,6 +134,7 @@ namespace input {
             require(min_draws >= t.min_bulk_ess_per_split_chain && min_draws >= t.min_tail_ess_per_split_chain,
                     "thermalization: monitor_n_batches >= 4 x the ESS thresholds (otherwise the test can never pass)");
             require(t.rhat_max > 1., "thermalization: rhat_max > 1");
+            require(t.max_ess_fraction > 0. && t.max_ess_fraction <= 1., "thermalization: 0 < max_ess_fraction <= 1");
             require(t.consecutive >= 1 && t.root >= 0, "thermalization: consecutive >= 1, root >= 0");
             require(!t.monitor_orbital || m.C_LK == 0., "thermalization: monitor_orbital requires C_LK == 0");
             require(t.max_steps > 0 && t.steps_per_cycle > 0 && t.cycles_per_check > 0,
@@ -253,9 +254,9 @@ namespace input {
                      in.measurements.n_batches, in.measurements.green_n_bins, in.measurements.boundary_phonons,
                      in.measurements.split_sign ? 1 : 0);
         std::fprintf(fp, "# thermalization: enabled = %d  monitor tau_D/sign/energy/orbital = %d/%d/%d/%d  monitor_n_batches = %zu  rhat_max = %.4f  "
-                         "ESS bulk/tail >= %.1f/%.1f and per split chain >= %.1f/%.1f  consecutive = %d  root = %d\n",
+                         "ESS bulk/tail >= %.1f/%.1f and per split chain >= %.1f/%.1f  max_ess_fraction = %.2f  consecutive = %d  root = %d\n",
                      t.enabled ? 1 : 0, t.monitor_tau_D ? 1 : 0, t.monitor_sign ? 1 : 0, t.monitor_energy ? 1 : 0, t.monitor_orbital ? 1 : 0, t.monitor_n_batches,
-                     t.rhat_max, t.min_bulk_ess, t.min_tail_ess, t.min_bulk_ess_per_split_chain, t.min_tail_ess_per_split_chain, t.consecutive, t.root);
+                     t.rhat_max, t.min_bulk_ess, t.min_tail_ess, t.min_bulk_ess_per_split_chain, t.min_tail_ess_per_split_chain, t.max_ess_fraction, t.consecutive, t.root);
         std::fprintf(fp, "# thermalization: max_steps = %llu  checkpoint_interval = %llu  steps_per_cycle = %llu  cycles_per_check = %llu\n",
                      static_cast<unsigned long long>(t.max_steps), static_cast<unsigned long long>(t.checkpoint_interval),
                      static_cast<unsigned long long>(t.steps_per_cycle), static_cast<unsigned long long>(t.cycles_per_check));

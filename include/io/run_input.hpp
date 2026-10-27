@@ -95,6 +95,7 @@ struct run_input {
         double min_tail_ess {400.};
         double min_bulk_ess_per_split_chain {50.};
         double min_tail_ess_per_split_chain {50.};
+        double max_ess_fraction {0.5};          // warn when the required ESS exceeds this fraction of the smallest window
         int consecutive {5};
         int root {0};
         std::uint64_t max_steps {1'000'000'000};        // cap of the thermalization run
@@ -214,6 +215,7 @@ void simplemc_save_input_config(S s, const run_input & in){
     t.save_at("min_tail_ess", in.thermalization.min_tail_ess);
     t.save_at("min_bulk_ess_per_split_chain", in.thermalization.min_bulk_ess_per_split_chain);
     t.save_at("min_tail_ess_per_split_chain", in.thermalization.min_tail_ess_per_split_chain);
+    t.save_at("max_ess_fraction", in.thermalization.max_ess_fraction);
     t.save_at("consecutive", in.thermalization.consecutive);
     t.save_at("root", in.thermalization.root);
     t.save_at("max_steps", in.thermalization.max_steps);
@@ -282,6 +284,7 @@ void simplemc_load_input_config(const S & s, run_input & in){
         t.try_load_at("min_tail_ess", in.thermalization.min_tail_ess);
         t.try_load_at("min_bulk_ess_per_split_chain", in.thermalization.min_bulk_ess_per_split_chain);
         t.try_load_at("min_tail_ess_per_split_chain", in.thermalization.min_tail_ess_per_split_chain);
+        t.try_load_at("max_ess_fraction", in.thermalization.max_ess_fraction);
         t.try_load_at("consecutive", in.thermalization.consecutive);
         t.try_load_at("root", in.thermalization.root);
         t.try_load_at("max_steps", in.thermalization.max_steps);

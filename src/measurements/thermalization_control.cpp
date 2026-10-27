@@ -25,6 +25,20 @@ thermalization_control::thermalization_control(MPI_Comm comm, std::vector<std::s
     if (isRoot()) { recv_.assign(send_.size() * static_cast<std::size_t>(size_), 0.); }
 }
 
+double thermalization_control::requiredEssFraction(const Options & opt, int ranks, std::size_t n_batches){
+    const double split {2. * ranks};
+    const double required {std::max(std::max(opt.min_bulk_ess, opt.min_bulk_ess_per_split_chain * split),
+                                    std::max(opt.min_tail_ess, opt.min_tail_ess_per_split_chain * split))};
+    return required / (split * static_cast<double>(static_cast<double>(n_batches) / 4));
+}
+
+std::size_t thermalization_control::batchesForFraction(const Options & opt, int ranks, double f){
+    assert(f > 0.);
+    std::size_t n {8};
+    while (requiredEssFraction(opt, ranks, n) > f) { n *= 2; }
+    return n;
+}
+
 thermalization_control::~thermalization_control(){
     // normally nothing is pending (no collective is posted once thermalized); after a run stopped by the step or
     // time cap the last gather/broadcast are still open: complete them (every rank destroys its controller)

@@ -270,13 +270,25 @@ namespace {
             simplemc::measurement_set therm {simplemc::measurement {convergence_monitor {&cfg, in.monitorOptions()}, "convergence"}};
             convergence_monitor & mon {therm.get<0>().value()};
             thermalization_control ctl {comm, mon.names(), mon.maxWindowBatches(), in.controlOptions()};
-            // right after a merge each split chain holds maxWindowBatches/4 draws: with fewer draws in total than the
-            // required ESS the test can pass only on antithetic estimates (e.g. a single rank)
-            const double min_total_draws {2. * comm.size() * static_cast<double>(mon.maxWindowBatches() / 4)};
-            if (root && min_total_draws < std::max(in.thermalization.min_bulk_ess, in.thermalization.min_tail_ess)) {
-                std::printf("diagramc: WARNING - %d ranks hold only %.0f draws in total after a window merge, below the required "
-                            "total ESS (%.0f/%.0f): thermalization may never pass (more ranks, or a larger monitor_n_batches)\n",
-                            comm.size(), min_total_draws, in.thermalization.min_bulk_ess, in.thermalization.min_tail_ess);
+            // right after a merge each split chain holds maxWindowBatches/4 draws: a required ESS close to the draws makes
+            // passing a matter of batch length (about 1/(1 - r) times the intended information) and lets every merge
+            // reset the consecutive count
+            const thermalization_control::Options copt {in.controlOptions()};
+            const double r {thermalization_control::requiredEssFraction(copt, comm.size(), mon.maxWindowBatches())};
+            if (root && r > in.thermalization.max_ess_fraction) {
+                const double split {2. * comm.size()};
+                const bool floor_sets {std::max(copt.min_bulk_ess_per_split_chain, copt.min_tail_ess_per_split_chain) * split
+                                       >= std::max(copt.min_bulk_ess, copt.min_tail_ess)};
+                const double draws {split * static_cast<double>(static_cast<double>(mon.maxWindowBatches()) / 4)};
+                char cost[96];
+                if (r < 1.) { std::snprintf(cost, sizeof cost, "passing needs ~%.1fx the intended information", 1. / (1. - r)); }
+                else { std::snprintf(cost, sizeof cost, "thermalization may never pass"); }
+                std::printf("diagramc: WARNING - the required ESS (%s) is %.0f%% of the %.0f draws in the window after a merge, "
+                            "above max_ess_fraction = %.2f: %s. Use monitor_n_batches >= %zu%s\n",
+                            floor_sets ? "set by the per-split-chain floor" : "set by the total", 100. * r, draws,
+                            in.thermalization.max_ess_fraction, cost,
+                            thermalization_control::batchesForFraction(copt, comm.size(), in.thermalization.max_ess_fraction),
+                            floor_sets ? "" : ", or more ranks");
             }
             ctl.setDeadline(t0 + budget);
             const simplemc::simulation_params tp {in.thermalizationParams()};

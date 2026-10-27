@@ -116,10 +116,11 @@ in a row, or at `max_steps`. In the second case production runs anyway, and `<pr
 |---|---|---|
 | `enabled` | true | false skips thermalization (not recommended) |
 | `monitor_tau_D`, `monitor_sign`, `monitor_energy`, `monitor_orbital` | false, true, true, false | extra monitored scalars: τ_D (variable mode), the diagram's sign ±1, the energy, the orbital fractions (only allowed at C = 0). n_int, n_ext, Y²/τ, rms w and rms k are always monitored. Without a sign problem the sign is the constant +1 and passes R̂ trivially. |
-| `monitor_n_batches` | 1024 | batches of the monitor: each split chain holds n/4 to n/2 draws. It must be ≥ 4 × the per-split-chain ESS floors, otherwise the test can never pass; with fewer than 2 · ranks · n/4 ≥ 400 draws the total ESS is hard to reach (diagramc warns). No window before 2n samples. |
+| `monitor_n_batches` | 1024 | batches of the monitor: each split chain holds n/4 to n/2 draws. It must be ≥ 4 × the per-split-chain ESS floors, otherwise the test can never pass; diagramc warns when the required ESS exceeds `max_ess_fraction` of the smallest window (2 · ranks · n/4 draws). No window before 2n samples. |
 | `rhat_max` | 1.01 | R̂ threshold |
 | `min_bulk_ess`, `min_tail_ess` | 400, 400 | total bulk/tail ESS over all chains (Vehtari et al.: rank-normalised ESS > 400); needs ≥ 2 ranks with the default `monitor_n_batches` |
 | `min_bulk_ess_per_split_chain`, `min_tail_ess_per_split_chain` | 50, 50 | floor per split chain (each rank counts as 2): the requirement is max(total, floor × split chains), so the floor decides above 4 ranks |
+| `max_ess_fraction` | 0.5 | warn (never reject) when the required ESS exceeds this fraction r of the draws in the window after a merge: passing then needs ~1/(1−r) times the intended information, and each merge can reset `consecutive`. The warning gives the `monitor_n_batches` that fixes it |
 | `consecutive` | 5 | checkpoints in a row that must pass |
 | `root` | 0 | rank that evaluates R̂ |
 | `max_steps` | 1e9 | cap per chain |

@@ -88,6 +88,13 @@ public:
     };
 
     thermalization_control(MPI_Comm comm, std::vector<std::string> names, std::size_t max_window_batches, Options opt);
+
+    // Required ESS as a fraction r of the smallest window (right after a merge: 2 x ranks split chains of n_batches/4
+    // draws), the larger of bulk and tail. Passing needs about ESS_required / (1 - r) independent samples (batch means
+    // ESS ~ D b / (b + tau)), so r well below 1 keeps the test about information, not about batch length.
+    static double requiredEssFraction(const Options & opt, int ranks, std::size_t n_batches);
+    // the smallest power-of-two n_batches (>= 8) with requiredEssFraction <= f
+    static std::size_t batchesForFraction(const Options & opt, int ranks, double f);
     thermalization_control(MPI_Comm comm, std::vector<std::string> names, std::size_t max_window_batches)
         : thermalization_control(comm, std::move(names), max_window_batches, Options{}) {}
     ~thermalization_control();

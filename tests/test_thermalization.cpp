@@ -13,7 +13,8 @@
 //    after the first evaluation, as timedOut() and not thermalized(); without a deadline it keeps going.
 // 4. The ESS criterion on iid windows, default thresholds (total 400, 50 per split chain): the total decides for
 //    4 chains, the per-split-chain floor for 48; windows of 64 draws per chain (the old 256-batch monitor) fail in
-//    both, 256 draws (the 1024-batch monitor) pass in both.
+//    both, 256 draws (the 1024-batch monitor) pass in both. requiredEssFraction / batchesForFraction: the required
+//    ESS as a fraction of the smallest window, and the batch count that brings it under 0.5.
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -257,6 +258,22 @@ static void ess_criterion(test::Checks & check){
           "(expected 1, 0/0), required %.0f/%.0f (expected 4800)",
           c4l.bulk_required, c4l.tail_required, c48s.rhat_ok ? 1 : 0, c48s.bulk_ok ? 1 : 0, c48s.tail_ok ? 1 : 0,
           c48s.bulk_required, c48s.tail_required);
+
+    // the required ESS as a fraction of the window right after a merge (2R split chains of n/4 draws)
+    {
+        using tc = thermalization_control;
+        const tc::Options d {};
+        const double r1 {tc::requiredEssFraction(d, 1, 1024)}, r2 {tc::requiredEssFraction(d, 2, 1024)};
+        const double r48 {tc::requiredEssFraction(d, 48, 1024)}, r48_256 {tc::requiredEssFraction(d, 48, 256)};
+        const std::size_t n1 {tc::batchesForFraction(d, 1, 0.5)}, n2 {tc::batchesForFraction(d, 2, 0.5)};
+        const std::size_t n48 {tc::batchesForFraction(d, 48, 0.5)};
+        const auto near {[](double a, double b){ return std::abs(a - b) < 1e-12; }};
+        check(near(r1, 400. / 512.) && near(r2, 400. / 1024.) && near(r48, 50. / 256.) && near(r48_256, 50. / 64.)
+                  && n1 == 2048 && n2 == 1024 && n48 == 512,
+              "required ESS fraction: 1 rank %.3f (400/512), 2 ranks %.3f, 48 ranks %.3f (50/256), 48 ranks with 256 batches %.3f "
+              "(the coupling-5 run); batches for 0.5: %zu / %zu / %zu (expected 2048 / 1024 / 512)",
+              r1, r2, r48, r48_256, n1, n2, n48);
+    }
 
     // the log: two scalars (one that passes, one that fails R-hat: shifted chains), the required-ESS header, 14 columns
     // per row, and the flags consistent with the checkpoint's pass
