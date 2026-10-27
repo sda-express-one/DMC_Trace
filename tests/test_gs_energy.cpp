@@ -11,6 +11,9 @@
 //    which the jackknifed estimate must reproduce within its errors.
 // 3. summary() of gs_energy, eff_mass and eff_mass_uniaxial (the per-chain results of diagramc): NaNs before 2 full
 //    batches, then exactly the values and errors of normalised().
+// 4. sign_free: on an AlAs chain (C != 0, with negative diagrams) the signed E and its error are bitwise those of an
+//    estimator without the option, and E_sf is the plain mean of X over the samples in full batches; summary() then
+//    carries E and E_sf. At C = 0 (s = +1 always) E_sf equals E.
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -169,11 +172,81 @@ static void summaries(test::Checks & check){
           se[0], se[1], sm[0], sm[1]);
 }
 
+struct SignFreeRun {
+    gs_energy_measurement::result off, on;
+    double mean_X {0.};             // the test's own mean of X over the samples in full batches
+    std::uint64_t n_negative {0};
+    std::vector<std::string> names;
+    std::size_t summary_size {0};
+};
+
+// one chain with every line update at fixed tau_D, two estimators (without and with sign_free) on the same samples
+static SignFreeRun sign_free_run(const std::array<double, 3> & lk, unsigned long long seed){
+    test::setLK(lk);
+    const std::array<double, 3> p {0.11, -0.07, 0.05};
+    // long and strongly coupled (tau_D = 40, epsilon = 1): at C != 0 enough lines for negative diagrams
+    test::Diagram d {seed, p, 160, 16, 60., -1., 0.2, 0.15};
+    diagram_cfg * cfg {&d.cfg};
+    add_int_ph_update addi {cfg, &d.rng};  rm_int_ph_update rmi {cfg, &d.rng};
+    add_ext_ph_update adde {cfg, &d.rng};  rm_ext_ph_update rme {cfg, &d.rng};
+    swp_ph_update swp {cfg, &d.rng};       mv_tau_update mv {cfg, &d.rng};
+    chg_ph_momentum chw {cfg, &d.rng};
+    std::uniform_real_distribution<double> u {0., 1.};
+    std::uniform_int_distribution<int> pick {0, 6};
+    gs_energy_measurement off {cfg, p, 0., true, 16};
+    gs_energy_measurement on {cfg, p, 0., true, 16, true};
+    std::vector<double> xs;
+    for (long step {0}; step < 300000; ++step) {
+        const int w {pick(d.rng)};
+        double r {-1.};
+        switch (w) { case 0: r = addi.attempt(); break; case 1: r = rmi.attempt(); break; case 2: r = adde.attempt(); break;
+                     case 3: r = rme.attempt(); break; case 4: r = swp.attempt(); break; case 5: r = mv.attempt(); break;
+                     default: r = chw.attempt(); }
+        if (r > 0. && u(d.rng) < r) {
+            switch (w) { case 0: addi.accept(); break; case 1: rmi.accept(); break; case 2: adde.accept(); break;
+                         case 3: rme.accept(); break; case 4: swp.accept(); break; case 5: mv.accept(); break;
+                         default: chw.accept(); }
+        }
+        off.measure();
+        on.measure();
+        xs.push_back(on.estimate());
+    }
+    SignFreeRun out;
+    out.off = off.normalised();
+    out.on = on.normalised();
+    const std::size_t used {on.acc.batches().size() * on.acc.batch_count()};
+    double sum {0.};
+    for (std::size_t i {0}; i < used; ++i) { sum += xs[i]; }
+    out.mean_X = sum / static_cast<double>(used);
+    out.n_negative = on.n_negative;
+    out.names = on.summaryNames();
+    out.summary_size = on.summary().size();
+    return out;
+}
+
+static void sign_free(test::Checks & check){
+    const SignFreeRun a {sign_free_run(test::AlAs, 31ULL)};
+    const bool same_signed {a.on.energy == a.off.energy && a.on.energy_error == a.off.energy_error};
+    const double dev {std::abs(static_cast<double>(a.on.energy_sf) - a.mean_X)};
+    check(same_signed && dev < 1e-10 * std::max(1., std::abs(a.mean_X)) && a.n_negative > 0 && std::isnan(static_cast<double>(a.off.energy_sf))
+              && a.names == std::vector<std::string>{"E", "E_sf"} && a.summary_size == 4,
+          "sign_free (AlAs, %llu negative samples): signed E unchanged (%.6f +- %.6f), E_sf = %.6f +- %.6f is the plain mean of X "
+          "(deviation %.1e); summary E, E_sf",
+          static_cast<unsigned long long>(a.n_negative), static_cast<double>(a.on.energy), static_cast<double>(a.on.energy_error),
+          static_cast<double>(a.on.energy_sf), static_cast<double>(a.on.energy_sf_error), dev);
+
+    const SignFreeRun c {sign_free_run({1., 1., 0.}, 32ULL)};
+    const double dev0 {std::abs(static_cast<double>(c.on.energy_sf - c.on.energy))};
+    check(c.n_negative == 0 && dev0 < 1e-12, "sign_free at C = 0 (no negative sample): E_sf = E (%.6f, deviation %.1e)",
+          static_cast<double>(c.on.energy), dev0);
+}
+
 int main(){
     test::Checks check {"gs_energy_measurement (tau-scaling estimator)"};
     summaries(check);
     test::setLK(test::AlAs);
     per_sample(check);
     order0(check);
+    sign_free(check);
     return check.exit_code();
 }

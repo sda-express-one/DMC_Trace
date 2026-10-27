@@ -106,6 +106,7 @@ Which estimators run is set in the top-level `"measurements"` block (below).
 | `green_n_bins` | 100 | τ bins of green_func and green_trace over (0, τ_max] |
 | `boundary_phonons` | 0 | green_*: 0 gives the vacuum sector G(p, τ); n > 0 exactly n external lines; < 0 all of them (the P function) |
 | `split_sign` | false | green_trace: also keep the positive and negative parts per bin; their ratio is the average sign per bin |
+| `sign_free` | false | gs_energy, qp_weights: also report the sign-free values, plain means over the sampled \|W\| ensemble (E_sf, Z_N_sf, <N>_sf, R_sf). E_sf ≤ E₀; when ⟨s⟩ is consistent with 0 the signed values are uncontrolled and tend to the sign-free ones. Adds the columns `E_sf err` to `_gs_energy.dat` and `_gs_energy_chains.dat`, and `Z_N_sf err` plus the `_sf` header lines to `_qp_weights.dat`. Part of the checkpoint fingerprint |
 
 ## `config.thermalization`: the R̂-controlled thermalization
 The ranks are the chains. Thermalization ends when R̂ and the bulk and tail ESS pass for `consecutive` checkpoints

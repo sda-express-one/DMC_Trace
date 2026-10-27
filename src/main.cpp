@@ -129,7 +129,7 @@ namespace {
     std::string outPath(const run_input & in, const std::string & what){ return in.output.prefix + "_" + what; }
 
     // Per-chain results (collective, before the ranks are merged): every rank's own summary() - value and jackknife
-    // error of each quantity in M::summaryNames() - and its sample counters are gathered on the root, which writes
+    // error of each quantity in m.summaryNames() - and its sample counters are gathered on the root, which writes
     // <prefix>_<name>_chains.dat: one line per rank, preceded by the mean over the chains with its standard error
     // and the chi^2/dof of the chains around their error-weighted mean (~1 if they agree, >> 1 for a stuck chain).
     template <typename M>
@@ -143,7 +143,7 @@ namespace {
         MPI_Gather(mine.data(), n, MPI_DOUBLE, root ? all.data() : nullptr, n, MPI_DOUBLE, 0, comm);
         if (!root) { return; }
 
-        const std::vector<std::string> names {M::summaryNames()};
+        const std::vector<std::string> names {m.summaryNames()};
         const auto R {static_cast<std::size_t>(comm.size())};
         const auto row {[&](std::size_t r){ return all.data() + r * static_cast<std::size_t>(n); }};
         const std::string path {outPath(in, name + "_chains.dat")};
@@ -344,8 +344,8 @@ namespace {
         const auto & d {in.diagram};
         const std::size_t nb {in.measurements.n_batches};
         simplemc::measurement_set ms {
-            simplemc::measurement {gs_energy_measurement {&cfg, d.p, d.tau_min, d.tau_fixed, nb}, "gs_energy"},
-            simplemc::measurement {qp_weights_measurement {&cfg, d.p, d.tau_min, d.tau_fixed, nb}, "qp_weights"},
+            simplemc::measurement {gs_energy_measurement {&cfg, d.p, d.tau_min, d.tau_fixed, nb, in.measurements.sign_free}, "gs_energy"},
+            simplemc::measurement {qp_weights_measurement {&cfg, d.p, d.tau_min, d.tau_fixed, nb, in.measurements.sign_free}, "qp_weights"},
             simplemc::measurement {eff_mass_measurement {&cfg, d.p, d.tau_min, d.tau_fixed, nb}, "eff_mass"},
             simplemc::measurement {eff_mass_uniaxial_measurement {&cfg, d.p, d.tau_min, d.tau_fixed, nb}, "eff_mass_uniaxial"},
             simplemc::measurement {green_func_measurement {&cfg, d.p, in.measurements.green_n_bins, in.measurements.boundary_phonons, nb},

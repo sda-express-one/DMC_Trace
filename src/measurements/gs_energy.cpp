@@ -13,12 +13,13 @@
 #include "diagram/vertex.hpp"
 
 gs_energy_measurement::gs_energy_measurement(diagram_cfg * cfg, std::array<double, 3> p, double tau_min, bool tau_fixed,
-                                             std::size_t n_batches)
+                                             std::size_t n_batches, bool sign_free)
     : cfg(cfg),
       p(p),
       tau_min(tau_fixed ? -1. : tau_min),
       tau_fixed(tau_fixed),
-      acc(2, n_batches)
+      sign_free(sign_free),
+      acc(sign_free ? 3 : 2, n_batches)
 {
     assert(cfg != nullptr);
 }
@@ -65,15 +66,23 @@ void gs_energy_measurement::measure(){
         return;
     }
     const double s {trace < 0. ? -1. : 1.};
-    const Eigen::Vector2d sample {s * estimate(), s};
-    acc.accumulate(sample);
+    const double X {estimate()};
+    if (sign_free) { acc.accumulate(Eigen::Vector3d(s * X, s, X)); }
+    else { acc.accumulate(Eigen::Vector2d(s * X, s)); }
     ++n_measured;
     if (s < 0.) { ++n_negative; }
 }
 
 gs_energy_measurement::result gs_energy_measurement::normalised() const {
     const auto jk {jackknifeRatio()};
-    return result{static_cast<long double>(jk.naive_mean()(0)), static_cast<long double>(jk.stderror()(0))};
+    const Eigen::VectorXd mean {jk.naive_mean()}, err {jk.stderror()};
+    result r {static_cast<long double>(mean(0)), static_cast<long double>(err(0)),
+              std::numeric_limits<long double>::quiet_NaN(), std::numeric_limits<long double>::quiet_NaN()};
+    if (sign_free) {
+        r.energy_sf = static_cast<long double>(mean(1));
+        r.energy_sf_error = static_cast<long double>(err(1));
+    }
+    return r;
 }
 
 void gs_energy_measurement::write(const std::string & path) const {
@@ -88,8 +97,15 @@ void gs_energy_measurement::write(const std::string & path) const {
                  static_cast<unsigned long long>(acc.count()), static_cast<unsigned long long>(n_measured),
                  static_cast<unsigned long long>(n_negative),
                  acc.batches().size(), static_cast<unsigned long long>(acc.batch_count()));
-    std::fprintf(f, "# columns: E err\n");
-    std::fprintf(f, "%.15Le %.6Le\n", r.energy, r.energy_error);
+    if (sign_free) {
+        std::fprintf(f, "# E_sf: sign-free energy <X> of the sampled |W| ensemble (E_sf <= E_0; <s> ~ exp(-(E_0 - E_sf) tau_D))\n");
+        std::fprintf(f, "# columns: E err E_sf err\n");
+        std::fprintf(f, "%.15Le %.6Le %.15Le %.6Le\n", r.energy, r.energy_error, r.energy_sf, r.energy_sf_error);
+    }
+    else {
+        std::fprintf(f, "# columns: E err\n");
+        std::fprintf(f, "%.15Le %.6Le\n", r.energy, r.energy_error);
+    }
     std::fclose(f);
 }
 
@@ -99,16 +115,22 @@ void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, gs_energy_me
     simplemc::mpi::all_reduce_in_place(m.n_negative, MPI_SUM, comm);
 }
 
-std::vector<std::string> gs_energy_measurement::summaryNames(){
+std::vector<std::string> gs_energy_measurement::summaryNames() const {
+    if (sign_free) { return {"E", "E_sf"}; }
     return {"E"};
 }
 
 std::vector<double> gs_energy_measurement::summary() const {
     try {
         const result r {normalised()};
-        return {static_cast<double>(r.energy), static_cast<double>(r.energy_error)};
+        std::vector<double> out {static_cast<double>(r.energy), static_cast<double>(r.energy_error)};
+        if (sign_free) {
+            out.push_back(static_cast<double>(r.energy_sf));
+            out.push_back(static_cast<double>(r.energy_sf_error));
+        }
+        return out;
     }
     catch (const std::exception &) {      // fewer than 2 full batches on this rank
-        return std::vector<double>(2, std::numeric_limits<double>::quiet_NaN());
+        return std::vector<double>(2 * summaryNames().size(), std::numeric_limits<double>::quiet_NaN());
     }
 }

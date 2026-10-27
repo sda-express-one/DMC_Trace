@@ -129,8 +129,9 @@ static void estimator_round_trip(test::Checks & check){
     simplemc::metropolis_kernel k {us};
     const std::array<double, 3> p {0., 0., 0.};
     diagram_cfg * c {&d.cfg};
-    const auto mk_gs {[&]{ return gs_energy_measurement {c, p, 0., true, 16}; }};
-    const auto mk_qp {[&]{ return qp_weights_measurement {c, p, 0., true, 16}; }};
+    // gs_energy and qp_weights with the sign-free block (the larger accumulators)
+    const auto mk_gs {[&]{ return gs_energy_measurement {c, p, 0., true, 16, true}; }};
+    const auto mk_qp {[&]{ return qp_weights_measurement {c, p, 0., true, 16, true}; }};
     const auto mk_em {[&]{ return eff_mass_measurement {c, p, 0., true, 16}; }};
     const auto mk_eu {[&]{ return eff_mass_uniaxial_measurement {c, p, 0., true, 16}; }};
     const auto mk_gf {[&]{ return green_func_measurement {c, p, 20, -1, 16}; }};
@@ -143,9 +144,11 @@ static void estimator_round_trip(test::Checks & check){
     }
     int ok {0};
     ok += round_trip("gs_energy", gs, mk_gs, [](const auto & a, const auto & b){
-        return a.n_measured == b.n_measured && a.normalised().energy == b.normalised().energy && a.normalised().energy_error == b.normalised().energy_error; });
+        return a.n_measured == b.n_measured && a.normalised().energy == b.normalised().energy && a.normalised().energy_error == b.normalised().energy_error
+            && a.normalised().energy_sf == b.normalised().energy_sf && a.normalised().energy_sf_error == b.normalised().energy_sf_error; });
     ok += round_trip("qp_weights", qp, mk_qp, [](const auto & a, const auto & b){
-        return a.hits == b.hits && a.n_measured == b.n_measured && a.normalised().Z == b.normalised().Z && a.normalised().Z_error == b.normalised().Z_error; });
+        return a.hits == b.hits && a.n_measured == b.n_measured && a.normalised().Z == b.normalised().Z && a.normalised().Z_error == b.normalised().Z_error
+            && a.normalised().Z_sf == b.normalised().Z_sf && a.normalised().R_orb_sf == b.normalised().R_orb_sf; });
     ok += round_trip("eff_mass", em, mk_em, [](const auto & a, const auto & b){
         return a.n_measured == b.n_measured && a.normalised().mass_ratio == b.normalised().mass_ratio
             && a.normalised().inv_mass == b.normalised().inv_mass; });

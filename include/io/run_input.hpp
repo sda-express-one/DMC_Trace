@@ -81,6 +81,7 @@ struct run_input {
         int green_n_bins {100};                 // green_func / green_trace: tau bins over [0, tau_max]
         int boundary_phonons {0};               // green_*: n >= 0 exactly n external lines (0: vacuum sector), < 0 all
         bool split_sign {false};
+        bool sign_free {false};                 // gs_energy, qp_weights: also the sign-free (|W| ensemble) values
     };
 
     struct Thermalization {
@@ -203,6 +204,7 @@ void simplemc_save_input_config(S s, const run_input & in){
     ms.save_at("green_n_bins", in.measurements.green_n_bins);
     ms.save_at("boundary_phonons", in.measurements.boundary_phonons);
     ms.save_at("split_sign", in.measurements.split_sign);
+    ms.save_at("sign_free", in.measurements.sign_free);
 
     auto t {s["thermalization"]};
     t.save_at("enabled", in.thermalization.enabled);
@@ -272,6 +274,7 @@ void simplemc_load_input_config(const S & s, run_input & in){
         ms.try_load_at("green_n_bins", in.measurements.green_n_bins);
         ms.try_load_at("boundary_phonons", in.measurements.boundary_phonons);
         ms.try_load_at("split_sign", in.measurements.split_sign);
+        ms.try_load_at("sign_free", in.measurements.sign_free);
     }
     if (s.has("thermalization")) {
         const auto t {s["thermalization"]};

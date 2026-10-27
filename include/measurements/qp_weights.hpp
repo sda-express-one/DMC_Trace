@@ -40,13 +40,23 @@
 // tau_fixed every sample is used. e^{mu tau_D} is common to all sectors of a diagram, so it cancels in
 // every ratio above and is not removed.
 //
+// Sign-free values (sign_free = true): the same quantities in the sampled |W| ensemble, as plain means without
+// the ratio to <s>: Z_N^sf = <delta_{N_ext, N}> (the sector fractions, sum 1), <N>_sf = <N_ext> and
+// R_sf = <delta_{N_ext, 0} U P U^T / tr P> (each diagram's matrix normalised to trace 1, tr R_sf = Z_0^sf). They
+// describe the ground state of Z_|W| (see gs_energy_measurement); comparing them with the signed values shows
+// how much the sign changes the phonon cloud, and they stay well defined when <s> is consistent with 0.
+//
 // Statistics: each measured sample is one sparse vector in a simplemc batch accumulator, laid out as
 //     [0, n_max]            s delta_{N_ext, N}, N = 0..n_max (n_max = max_order_ext / 2: no overflow)
 //     n_max + 1             s N_ext
 //     n_max + 2 .. + 10     s delta_{N_ext, 0} (U P U^T / |tr P|)_ij, symmetrised, row-major
 //     n_max + 11            s
-// and every estimate is the delete-one-batch jackknife of a ratio to the last entry (at least 2 full
-// batches needed). Several ranks: collect the accumulator with simplemc_mpi_collect(comm, acc), and sum
+// and with sign_free (indexSignFree() = n_max + 12 onwards)
+//     + [0, n_max]          delta_{N_ext, N}
+//     + n_max + 1           N_ext
+//     + n_max + 2 .. + 10   delta_{N_ext, 0} (U P U^T / tr P)_ij, symmetrised, row-major
+// Every signed estimate is the delete-one-batch jackknife of a ratio to entry n_max + 11, every sign-free one
+// that of a plain mean (at least 2 full batches needed). Several ranks: collect the accumulator with simplemc_mpi_collect(comm, acc), and sum
 // hits, n_measured and n_negative, before calling normalised()/write().
 struct qp_weights_measurement {
     using acc_type = simplemc::batch_acc_dynamic<double>;
@@ -57,6 +67,7 @@ struct qp_weights_measurement {
     const bool tau_fixed {false};
     const int n_max {0};                // largest number of external lines the diagram can hold
     const Eigen::Matrix3d U_p;          // band basis at p, for the band-resolved residue
+    const bool sign_free {false};       // also accumulate the sign-free values
 
     acc_type acc;                       // one sample per measured configuration
     std::vector<std::uint64_t> hits;    // measured samples per N (diagnostic)
@@ -72,15 +83,24 @@ struct qp_weights_measurement {
         Eigen::Matrix3d R_orb_error {Eigen::Matrix3d::Zero()};
         Eigen::Matrix3d R_band {Eigen::Matrix3d::Zero()};   // the same in the band basis at p
         Eigen::Matrix3d R_band_error {Eigen::Matrix3d::Zero()};
+        // sign-free values (empty / zero without sign_free)
+        std::vector<long double> Z_sf;
+        std::vector<long double> Z_sf_error;
+        long double mean_N_sf {0.L};
+        long double mean_N_sf_error {0.L};
+        Eigen::Matrix3d R_orb_sf {Eigen::Matrix3d::Zero()};
+        Eigen::Matrix3d R_orb_sf_error {Eigen::Matrix3d::Zero()};
+        Eigen::Matrix3d R_band_sf {Eigen::Matrix3d::Zero()};
+        Eigen::Matrix3d R_band_sf_error {Eigen::Matrix3d::Zero()};
     };
 
     qp_weights_measurement(diagram_cfg * cfg, std::array<double, 3> p, double tau_min, bool tau_fixed = false,
-                           std::size_t n_batches = 256);
+                           std::size_t n_batches = 256, bool sign_free = false);
 
     void measure();
 
     // The estimates as a function of the batch means x: [Z_0..Z_{n_max}, <N>, R_orb (9, row-major),
-    // R_band (9, row-major)].
+    // R_band (9, row-major)], followed with sign_free by the same block of sign-free values.
     Eigen::VectorXd ratios(const Eigen::VectorXd & x) const;
 
     // Throws simplemc::simplemc_exception with fewer than 2 full batches.
@@ -91,13 +111,16 @@ struct qp_weights_measurement {
     // means (the estimator applied to the full-run means) and jackknife errors
     result normalised() const;
 
-    // '#' metadata lines with <N> and the two residue matrices, then one line per N: N hits Z_N err
+    // '#' metadata lines with <N> and the two residue matrices (and their sign-free counterparts), then one line
+    // per N: N hits Z_N err (with sign_free: N hits Z_N err Z_N_sf err)
     void write(const std::string & path) const;
 
 private:
     int indexMeanN() const { return n_max + 1; }
     int indexResidue() const { return n_max + 2; }
     int indexSign() const { return n_max + 11; }
+    int indexSignFree() const { return n_max + 12; }        // the sign-free block, laid out as [0, n_max + 10]
+    int outputs() const { return n_max + 20; }              // estimates per block in ratios()
 
     // several ranks (collective): merges the batches of every rank into acc and sums the counters, on every rank
     friend void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, qp_weights_measurement & m);

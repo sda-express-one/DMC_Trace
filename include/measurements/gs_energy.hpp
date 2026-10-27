@@ -31,8 +31,16 @@
 // tau_fixed = true every sample is used (runs in which tau_D is held at a large fixed value).
 // Every boundary sector is included, i.e. the estimator tracks the lowest state of the full trace.
 //
-// Statistics: each measured sample is the vector [s X, s] in a simplemc batch accumulator; the energy
-// is the delete-one-batch jackknife of the ratio of the two means (at least 2 full batches needed).
+// Sign-free value (sign_free = true): E_sf = <X>, the plain mean over the sampled |W| ensemble. Since
+// d ln|W|/d lambda = d ln W/d lambda, X is also the tau-scaling estimator of Z_|W| = sum |W|, so E_sf is the
+// ground-state energy of the sign-free ensemble. Z_|W| >= |Z| gives E_sf <= E_0; they agree at first order (a
+// one-line diagram is sign-definite) and <s>(tau_D) ~ e^{-(E_0 - E_sf) tau_D}. With <s> resolved at several
+// tau_D, E_0 = E_sf - d ln<s>/d tau_D; when <s> is consistent with 0 the signed E is uncontrolled and tends to
+// E_sf.
+//
+// Statistics: each measured sample is the vector [s X, s] (with sign_free: [s X, s, X]) in a simplemc batch
+// accumulator; the energy is the delete-one-batch jackknife of the ratio of the first two means, E_sf that of
+// the third mean (at least 2 full batches needed).
 // Several ranks: collect the accumulator with simplemc_mpi_collect(comm, acc), and sum n_measured and
 // n_negative, before calling normalised()/write().
 struct gs_energy_measurement {
@@ -42,27 +50,31 @@ struct gs_energy_measurement {
     const std::array<double, 3> p;      // external momentum: the k_init the diagram was built with
     const double tau_min {0.};          // -1 (unused) when tau_fixed
     const bool tau_fixed {false};
+    const bool sign_free {false};       // also accumulate X without the sign (E_sf)
 
-    acc_type acc;                       // one sample [s X, s] per measured configuration
+    acc_type acc;                       // one sample [s X, s] ([s X, s, X] with sign_free) per measured configuration
     std::uint64_t n_measured {0};       // configurations accumulated (tau_D >= tau_min)
     std::uint64_t n_negative {0};       // ... of which with sign -1
 
     struct result {
         long double energy {0.L};
         long double energy_error {0.L};
+        long double energy_sf {0.L};            // sign-free energy; NaN without sign_free
+        long double energy_sf_error {0.L};
     };
 
     gs_energy_measurement(diagram_cfg * cfg, std::array<double, 3> p, double tau_min, bool tau_fixed = false,
-                          std::size_t n_batches = 256);
+                          std::size_t n_batches = 256, bool sign_free = false);
 
     // X for the current diagram, without the sign (see above); requires a finite, non-zero trace
     double estimate() const;
 
     void measure();
 
-    // the energy as a function of the batch means x = [<s X>, <s>]
+    // the energies as a function of the batch means x = [<s X>, <s>(, <X>)]: [E(, E_sf)]
     Eigen::VectorXd ratio(const Eigen::VectorXd & x) const {
-        return Eigen::VectorXd::Constant(1, x(0) / x(1));
+        if (!sign_free) { return Eigen::VectorXd::Constant(1, x(0) / x(1)); }
+        return Eigen::Vector2d(x(0) / x(1), x(2));
     }
 
     // Throws simplemc::simplemc_exception with fewer than 2 full batches.
@@ -73,11 +85,12 @@ struct gs_energy_measurement {
     result normalised() const;
 
     // This rank's own result (before simplemc_mpi_collect merges the ranks), for the per-chain file: value and
-    // jackknife error of each quantity in summaryNames(), in that order; NaNs with fewer than 2 full batches.
-    static std::vector<std::string> summaryNames();
+    // jackknife error of each quantity in summaryNames() (E, and E_sf with sign_free), in that order; NaNs with
+    // fewer than 2 full batches.
+    std::vector<std::string> summaryNames() const;
     std::vector<double> summary() const;
 
-    // '#' metadata lines, then one line: E err
+    // '#' metadata lines, then one line: E err (with sign_free: E err E_sf err)
     void write(const std::string & path) const;
 
     // several ranks (collective): merges the batches of every rank into acc and sums the counters, on every rank

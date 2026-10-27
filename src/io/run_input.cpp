@@ -251,9 +251,9 @@ namespace input {
         std::fprintf(fp, "# start: random = %d  internal %d..%d  external %d..%d  w_spread = %.10g\n", in.start.random_start ? 1 : 0,
                      in.start.n_internal_min, in.start.n_internal_max, in.start.n_external_min, in.start.n_external_max, in.start.w_spread);
         std::fprintf(fp, "# rng: seed = %llu\n", static_cast<unsigned long long>(in.rng.seed));
-        std::fprintf(fp, "# measurements: n_batches = %zu  green_n_bins = %d  boundary_phonons = %d  split_sign = %d\n",
+        std::fprintf(fp, "# measurements: n_batches = %zu  green_n_bins = %d  boundary_phonons = %d  split_sign = %d  sign_free = %d\n",
                      in.measurements.n_batches, in.measurements.green_n_bins, in.measurements.boundary_phonons,
-                     in.measurements.split_sign ? 1 : 0);
+                     in.measurements.split_sign ? 1 : 0, in.measurements.sign_free ? 1 : 0);
         std::fprintf(fp, "# thermalization: enabled = %d  monitor tau_D/sign/energy/orbital = %d/%d/%d/%d  monitor_n_batches = %zu  rhat_max = %.4f  "
                          "ESS bulk/tail >= %.1f/%.1f and per split chain >= %.1f/%.1f  max_ess_fraction = %.2f  consecutive = %d  root = %d  live_every = %d\n",
                      t.enabled ? 1 : 0, t.monitor_tau_D ? 1 : 0, t.monitor_sign ? 1 : 0, t.monitor_energy ? 1 : 0, t.monitor_orbital ? 1 : 0, t.monitor_n_batches,

@@ -23,6 +23,7 @@
             "boundary_phonons": 0,
             "green_n_bins": 100,
             "n_batches": 256,
+            "sign_free": false,
             "split_sign": false
         },
         "model": {
