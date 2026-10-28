@@ -13,7 +13,7 @@
 // (input.json without an argument) and the program exits.
 //
 // Checkpoint/restart (io/checkpoint.hpp): with checkpoint.enabled every rank writes
-// <prefix>_checkpoint_rank<r>.msgpack after the thermalization, every checkpoint.interval seconds of production and at
+// <prefix>_checkpoints/rank<r>.msgpack after the thermalization, every checkpoint.interval seconds of production and at
 // its end. A job with checkpoint.restart = true and the same number of ranks continues from those files: no
 // thermalization, another params.max_steps of production (per job) within its own time budget, and the estimators keep
 // accumulating, so the outputs cover all jobs.
@@ -221,18 +221,21 @@ namespace {
         diagram_cfg & cfg {chain.cfg};
         const bool restart {in.checkpoint.restart};
         const std::filesystem::path ckpt {checkpoint::path(in.output.prefix, rank)};
+        // read from: ckpt, or the old flat layout if only that exists (the next save goes to ckpt)
+        const std::filesystem::path ckpt_in {!std::filesystem::exists(ckpt) && std::filesystem::exists(checkpoint::legacyPath(in.output.prefix, rank))
+                                             ? checkpoint::legacyPath(in.output.prefix, rank) : ckpt};
         checkpoint::Meta meta;          // this chain's: carried across jobs
         if (restart) {
             // every rank needs its own file, written by a job with the same number of ranks and an input whose
             // model, diagram and estimator settings are unchanged (collective checks: all ranks fail together)
-            int ok {std::filesystem::exists(ckpt) ? 1 : 0};
+            int ok {std::filesystem::exists(ckpt_in) ? 1 : 0};
             simplemc::mpi::all_reduce_in_place(ok, MPI_MIN, comm);
             if (ok == 0) {
-                throw std::runtime_error("checkpoint.restart: missing checkpoint file(s) " + in.output.prefix + "_checkpoint_rank*.msgpack "
-                                         "(rank " + std::to_string(rank) + ": " + (std::filesystem::exists(ckpt) ? "found" : "missing") + ")");
+                throw std::runtime_error("checkpoint.restart: missing checkpoint file(s) " + checkpoint::directory(in.output.prefix).string() + "/rank*.msgpack "
+                                         "(rank " + std::to_string(rank) + ": " + (std::filesystem::exists(ckpt_in) ? "found" : "missing") + ")");
             }
             DiagramState saved;
-            checkpoint::readHeader(ckpt, meta, saved);
+            checkpoint::readHeader(ckpt_in, meta, saved);
             std::string why;
             if (meta.format != 1) { why = "unknown checkpoint format"; }
             else if (meta.n_ranks != comm.size()) {
@@ -357,7 +360,7 @@ namespace {
         if (restart) {
             // the rest of the chain's state: rng, update counters, estimators' data, production stats so far; then the
             // input's update weights and estimator selection, which may change between jobs
-            checkpoint::load(ckpt, chain.rng, us, ms, stats);
+            checkpoint::load(ckpt_in, chain.rng, us, ms, stats);
             for (const auto & [name, w] : in.update_weights) { us.set_weight(name, w); }
         }
         for (const auto & [name, active] : in.measurements_active) { ms.set_active(name, active); }
@@ -440,8 +443,8 @@ namespace {
             std::fprintf(f, "# diagramc run: %d chain(s), input %s\n", comm.size(), path.string().c_str());
             input::print(in, f);
             if (restart) {
-                std::fprintf(f, "\n# restarted from the checkpoints %s_checkpoint_rank*.msgpack: job %d of these chains "
-                                "(the thermalization below is the original job's)", in.output.prefix.c_str(), meta.jobs);
+                std::fprintf(f, "\n# restarted from the checkpoints %s/rank*.msgpack: job %d of these chains "
+                                "(the thermalization below is the original job's)", checkpoint::directory(in.output.prefix).c_str(), meta.jobs);
             }
             std::fprintf(f, "\n# thermalized: %s, %llu steps per chain, %.1f s\n",
                          !meta.thermalization_enabled && !in.thermalization.enabled ? "not checked (thermalization disabled)"

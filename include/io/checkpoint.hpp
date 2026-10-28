@@ -10,7 +10,7 @@
 #include "diagram/diagram_config.hpp"
 #include "diagram/diagram_io.hpp"
 
-// Checkpoint/restart of diagramc: one file per rank, <prefix>_checkpoint_rank<r>.msgpack (MessagePack: compact, and
+// Checkpoint/restart of diagramc: one file per rank, <prefix>_checkpoints/rank<r>.msgpack (MessagePack: compact, and
 // NaN/Inf survive, unlike in text JSON), written atomically by simplemc (temporary file + rename). Content, through
 // simplemc::save_json_checkpoint:
 //     "rng"           the chain's xoshiro256** state
@@ -73,7 +73,17 @@ namespace checkpoint {
 
     inline const simplemc::json_io_options io {.mode = simplemc::json_file_mode::msgpack, .indent = 0};
 
+    // <prefix>_checkpoints/: one directory per run, so the rank files do not crowd the output directory
+    inline std::filesystem::path directory(const std::string & prefix){
+        return prefix + "_checkpoints";
+    }
+
     inline std::filesystem::path path(const std::string & prefix, int rank){
+        return directory(prefix) / ("rank" + std::to_string(rank) + ".msgpack");
+    }
+
+    // the layout before the subdirectory, <prefix>_checkpoint_rank<r>.msgpack: still read by a restart
+    inline std::filesystem::path legacyPath(const std::string & prefix, int rank){
         return prefix + "_checkpoint_rank" + std::to_string(rank) + ".msgpack";
     }
 
@@ -89,6 +99,7 @@ namespace checkpoint {
     void save(const std::filesystem::path & file, const RNG & rng, const US & us, const MS & ms, const simplemc::simulation_stats & stats,
               const diagram_cfg & cfg, const Meta & meta){
         const DiagramState diagram {captureDiagram(cfg)};
+        if (file.has_parent_path()) { std::filesystem::create_directories(file.parent_path()); }    // every rank, no ordering needed
         simplemc::save_json_checkpoint(file, rng, us, ms, stats, diagram,
                                        [&](simplemc::json_serializer & s){ s.save_at("dmc", meta); }, io);
     }

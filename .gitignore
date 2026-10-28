@@ -51,3 +51,6 @@ runs
 
 # machine-specific build paths (see config.mk)
 config.local.mk
+
+# directory for local outputs analysis
+cluster_outputs

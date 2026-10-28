@@ -158,7 +158,7 @@ The outputs are:
 
 | key | default | meaning |
 |---|---|---|
-| `enabled` | true | every rank writes `<prefix>_checkpoint_rank<r>.msgpack`: after the thermalization, every `interval` seconds of production, and at its end |
+| `enabled` | true | every rank writes `<prefix>_checkpoints/rank<r>.msgpack` (the directory is created by the job): after the thermalization, every `interval` seconds of production, and at its end |
 | `interval` | 3600 | seconds between production checkpoints (per rank) |
 | `restart` | false | continue from the checkpoint files of `output.prefix` instead of starting a new chain |
 
@@ -172,6 +172,8 @@ the **same number of ranks**.
 - The job skips the thermalization; the original job's outcome is kept in `run.dat`.
 - It runs another `params.max_steps` of production (counted per job) within its own time budget.
 - The estimators keep accumulating, so the output files cover all jobs.
+- Checkpoints in the old flat layout, `<prefix>_checkpoint_rank<r>.msgpack`, are still read when the subdirectory
+  has none; the job then writes its checkpoints to the subdirectory, and the old files can be deleted.
 
 The restart is statistical: the diagram's cached quantities are rebuilt from its lines and momenta, so the
 continued chain matches an uninterrupted one up to rounding.
