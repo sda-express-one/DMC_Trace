@@ -38,8 +38,8 @@
 // Order of use: input::load -> input::applyGlobals (before any measurement is constructed: eff_mass* capture
 // A_LK, B_LK at construction) -> build the diagram -> makeUpdateSet (updates/update_set.hpp) with the weights.
 // the production estimators, in the order of main's measurement set: the keys of the "measurements" block
-inline constexpr std::array<std::string_view, 7> measurement_names {
-    "gs_energy", "qp_weights", "eff_mass", "eff_mass_uniaxial", "green_func", "green_trace", "avg_sign"};
+inline constexpr std::array<std::string_view, 8> measurement_names {
+    "gs_energy", "qp_weights", "eff_mass", "eff_mass_uniaxial", "green_func", "green_trace", "green_laguerre", "avg_sign"};
 
 struct run_input {
     struct Model {
@@ -78,7 +78,9 @@ struct run_input {
 
     struct Measurements {
         std::size_t n_batches {256};            // batches of the estimators' accumulators
-        int green_n_bins {100};                 // green_func / green_trace: tau bins over [0, tau_max]
+        int green_n_bins {100};                 // green_func / green_trace: tau bins over [0, tau_max] (green_laguerre: its grid)
+        int laguerre_l_max {40};                // green_laguerre: coefficients l = 0 .. laguerre_l_max
+        double laguerre_scale {0.};             // green_laguerre: s of the Laguerre functions; 0 = 2 min_n(E_n(p) - mu)
         int boundary_phonons {0};               // green_*: n >= 0 exactly n external lines (0: vacuum sector), < 0 all
         bool split_sign {false};
         bool sign_free {false};                 // gs_energy, qp_weights: also the sign-free (|W| ensemble) values
@@ -202,6 +204,8 @@ void simplemc_save_input_config(S s, const run_input & in){
     auto ms {s["measurements"]};
     ms.save_at("n_batches", in.measurements.n_batches);
     ms.save_at("green_n_bins", in.measurements.green_n_bins);
+    ms.save_at("laguerre_l_max", in.measurements.laguerre_l_max);
+    ms.save_at("laguerre_scale", in.measurements.laguerre_scale);
     ms.save_at("boundary_phonons", in.measurements.boundary_phonons);
     ms.save_at("split_sign", in.measurements.split_sign);
     ms.save_at("sign_free", in.measurements.sign_free);
@@ -272,6 +276,8 @@ void simplemc_load_input_config(const S & s, run_input & in){
         const auto ms {s["measurements"]};
         ms.try_load_at("n_batches", in.measurements.n_batches);
         ms.try_load_at("green_n_bins", in.measurements.green_n_bins);
+        ms.try_load_at("laguerre_l_max", in.measurements.laguerre_l_max);
+        ms.try_load_at("laguerre_scale", in.measurements.laguerre_scale);
         ms.try_load_at("boundary_phonons", in.measurements.boundary_phonons);
         ms.try_load_at("split_sign", in.measurements.split_sign);
         ms.try_load_at("sign_free", in.measurements.sign_free);

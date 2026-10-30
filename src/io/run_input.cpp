@@ -122,6 +122,8 @@ namespace input {
         const auto & ms {in.measurements};
         require(ms.n_batches >= 2, "measurements: n_batches >= 2");
         require(ms.green_n_bins >= 1, "measurements: green_n_bins >= 1");
+        require(ms.laguerre_l_max >= 1, "measurements: laguerre_l_max >= 1");
+        require(std::isfinite(ms.laguerre_scale) && ms.laguerre_scale >= 0., "measurements: laguerre_scale >= 0 (0: automatic)");
         // green_*: < 0 selects every sector (the full trace over boundary states, the P function), 0..max_external_lines one sector
         require(ms.boundary_phonons <= d.max_external_lines, "measurements: boundary_phonons <= max_external_lines (< 0: all sectors)");
 
@@ -162,8 +164,8 @@ namespace input {
         require(!active("eff_mass_uniaxial") || m.C_LK == 0., "measurements: eff_mass_uniaxial requires C_LK == 0");
         require(!(active("eff_mass") || active("eff_mass_uniaxial")) || p_zero || d.tau_fixed,
                 "measurements: eff_mass at p != 0 requires tau_fixed (variable length: valid at p = 0 only)");
-        require(!(active("green_func") || active("green_trace")) || !d.tau_fixed,
-                "measurements: green_func and green_trace require variable length (no tau binning at fixed tau_D)");
+        require(!(active("green_func") || active("green_trace") || active("green_laguerre")) || !d.tau_fixed,
+                "measurements: green_func, green_trace and green_laguerre require variable length (no tau sampling at fixed tau_D)");
 
         // update weights
         bool any {false}, any_length {false};
@@ -251,9 +253,11 @@ namespace input {
         std::fprintf(fp, "# start: random = %d  internal %d..%d  external %d..%d  w_spread = %.10g\n", in.start.random_start ? 1 : 0,
                      in.start.n_internal_min, in.start.n_internal_max, in.start.n_external_min, in.start.n_external_max, in.start.w_spread);
         std::fprintf(fp, "# rng: seed = %llu\n", static_cast<unsigned long long>(in.rng.seed));
-        std::fprintf(fp, "# measurements: n_batches = %zu  green_n_bins = %d  boundary_phonons = %d  split_sign = %d  sign_free = %d\n",
+        std::fprintf(fp, "# measurements: n_batches = %zu  green_n_bins = %d  boundary_phonons = %d  split_sign = %d  sign_free = %d"
+                         "  laguerre_l_max = %d  laguerre_scale = %g\n",
                      in.measurements.n_batches, in.measurements.green_n_bins, in.measurements.boundary_phonons,
-                     in.measurements.split_sign ? 1 : 0, in.measurements.sign_free ? 1 : 0);
+                     in.measurements.split_sign ? 1 : 0, in.measurements.sign_free ? 1 : 0,
+                     in.measurements.laguerre_l_max, in.measurements.laguerre_scale);
         std::fprintf(fp, "# thermalization: enabled = %d  monitor tau_D/sign/energy/orbital = %d/%d/%d/%d  monitor_n_batches = %zu  rhat_max = %.4f  "
                          "ESS bulk/tail >= %.1f/%.1f and per split chain >= %.1f/%.1f  max_ess_fraction = %.2f  consecutive = %d  root = %d  live_every = %d\n",
                      t.enabled ? 1 : 0, t.monitor_tau_D ? 1 : 0, t.monitor_sign ? 1 : 0, t.monitor_energy ? 1 : 0, t.monitor_orbital ? 1 : 0, t.monitor_n_batches,

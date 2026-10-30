@@ -197,6 +197,12 @@ int main(){
             in.diagram.tau_fixed = true; in.diagram.tau_D_start = in.diagram.tau_max; in.diagram.mu = 0.;
             for (const auto n : length_changing_updates) { in.update_weights[std::string {n}] = 0.; }
             in.measurements_active["green_trace"] = true; }), "green_trace at fixed tau");
+        expect(rejected([](run_input & in){
+            in.diagram.tau_fixed = true; in.diagram.tau_D_start = in.diagram.tau_max; in.diagram.mu = 0.;
+            for (const auto n : length_changing_updates) { in.update_weights[std::string {n}] = 0.; }
+            in.measurements_active["green_laguerre"] = true; }), "green_laguerre at fixed tau");
+        expect(rejected([](run_input & in){ in.measurements.laguerre_l_max = 0; }), "laguerre_l_max < 1");
+        expect(rejected([](run_input & in){ in.measurements.laguerre_scale = -1.; }), "laguerre_scale < 0");
         check(ok == total, "validate: %d/%d settings classified correctly (4 valid, the rest rejected)", ok, total);
     }
 

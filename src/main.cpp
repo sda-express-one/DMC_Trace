@@ -64,6 +64,7 @@
 #include "measurements/eff_mass_uniaxial.hpp"
 #include "measurements/green_func.hpp"
 #include "measurements/green_trace.hpp"
+#include "measurements/green_laguerre.hpp"
 #include "measurements/gs_energy.hpp"
 #include "measurements/qp_weights.hpp"
 #include "measurements/thermalization_control.hpp"
@@ -355,6 +356,9 @@ namespace {
                                    "green_func"},
             simplemc::measurement {green_trace_measurement {&cfg, d.p, in.measurements.green_n_bins, in.measurements.boundary_phonons,
                                                             in.measurements.split_sign, nb}, "green_trace"},
+            simplemc::measurement {green_laguerre_measurement {&cfg, d.p, in.measurements.laguerre_l_max, in.measurements.laguerre_scale,
+                                                               in.measurements.green_n_bins, in.measurements.boundary_phonons, nb},
+                                   "green_laguerre"},
             simplemc::measurement {avg_sign_measurement {&cfg, d.tau_min, d.tau_fixed, nb}, "avg_sign"}};
         simplemc::simulation_stats stats;
         if (restart) {

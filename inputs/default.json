@@ -22,6 +22,8 @@
         "measurements": {
             "boundary_phonons": 0,
             "green_n_bins": 100,
+            "laguerre_l_max": 40,
+            "laguerre_scale": 0.0,
             "n_batches": 256,
             "sign_free": false,
             "split_sign": false
@@ -89,6 +91,9 @@
             "is_active": false
         },
         "green_trace": {
+            "is_active": false
+        },
+        "green_laguerre": {
             "is_active": false
         },
         "gs_energy": {

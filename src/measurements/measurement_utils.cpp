@@ -1,4 +1,5 @@
 #include "measurements/measurement_utils.hpp"
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <Eigen/Core>
@@ -18,6 +19,26 @@ namespace measurement {
             z0 += -std::expm1(-rate * static_cast<long double>(tau_max)) / rate;
         }
         return z0;
+    }
+
+    double order0MinRate(const std::array<double, 3> & p, double chem_pot){
+        const Eigen::Matrix<double, 4, 3> eig {weight::LKMatrix::diagonalizeLKHamiltonian(p)};
+        const double p_sq {p[0]*p[0] + p[1]*p[1] + p[2]*p[2]};
+        double rate {p_sq * eig(0, 0) - chem_pot};
+        for (int n {1}; n < 3; ++n) { rate = std::min(rate, p_sq * eig(0, n) - chem_pot); }
+        return rate;
+    }
+
+    void laguerreFunctions(double x, std::span<double> out){
+        assert(x >= 0.);
+        if (out.empty()) { return; }
+        out[0] = std::exp(-0.5 * x);
+        if (out.size() == 1) { return; }
+        out[1] = (1. - x) * out[0];
+        for (std::size_t l {1}; l + 1 < out.size(); ++l) {
+            const double ld {static_cast<double>(l)};
+            out[l + 1] = ((2.*ld + 1. - x) * out[l] - ld * out[l - 1]) / (ld + 1.);
+        }
     }
 
     long double binScale(int bin, double bin_width, double chem_pot){
