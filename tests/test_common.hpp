@@ -7,6 +7,8 @@
 #include <array>
 #include <cstdarg>
 #include <cstdio>
+#include <initializer_list>
+#include <string>
 #include <utility>
 #include <vector>
 #include <simplemc/random/xoshiro256.hpp>
@@ -20,6 +22,28 @@ namespace test {
 
 // AlAs |Luttinger| parameters (A > B), used as the default band structure throughout the tests
 inline constexpr std::array<double, 3> AlAs {4.681, 1.019, 5.498};
+// CaO valence band (Guster et al.; cluster_outputs/CaO_input.json)
+inline constexpr std::array<double, 3> CaO {1.407, 0.174, 0.653};
+
+// Band structures for the diagonalizer tests (test_lk_sphere, test_lk_gauge): AlAs, AlAs with A and B swapped, CaO, then a
+// scan of C for both orderings over the allowed range -(A/2 + B) < C < A + B (H_LK positive definite). C = +-(A - B) is
+// avoided: there (110) is degenerate, and for C = A - B every k (spherical bands). C = 0 is covered separately.
+struct LKCase { std::string label; std::array<double, 3> abc; };
+
+inline std::vector<LKCase> lkCases(){
+    const double A {AlAs[0]}, B {AlAs[1]};
+    std::vector<LKCase> cases {{"AlAs (A > B)", AlAs}, {"A < B", {B, A, AlAs[2]}}, {"CaO", CaO}};
+    const auto add {[&](double a, double b, std::initializer_list<double> cs){
+        for (const double c : cs) {
+            char label[48];
+            std::snprintf(label, sizeof label, "%s, C = %+.2f", a > b ? "A > B" : "A < B", c);
+            cases.push_back({label, {a, b, c}});
+        }
+    }};
+    add(A, B, {-3.0, -1.5, -0.3, 0.3, 1.5, 3.0, 4.5, 5.4});      // range (-3.36, 5.70); A - B = 3.66
+    add(B, A, {-4.8, -2.5, -0.3, 0.3, 1.5, 3.0, 4.5, 5.4});      // range (-5.19, 5.70); +-(A - B) = +-3.66
+    return cases;
+}
 
 inline void setLK(const std::array<double, 3> & abc){ weight::LKMatrix::setLKParameters(abc[0], abc[1], abc[2]); }
 

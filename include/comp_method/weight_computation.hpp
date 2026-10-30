@@ -29,7 +29,7 @@ namespace weight {
     }
 
     struct LKMatrix {
-        struct choice{
+        struct choice {
             std::array<int, 3> position {0, 1, 2};
             std::array<int, 3> sign {1, 1, 1};
         };
@@ -42,10 +42,78 @@ namespace weight {
         inline static double B_LK {1.};
         inline static double C_LK {0.};
 
+        // Column n: the signs (+-1, or 0 for a component that is exactly 0, only the C = 0 axes) of band n's
+        // eigenvector in the interior of the wedge k_0 > k_1 > k_2 > 0, where they are constant (see the sign gauge in
+        // diagonalizeLKHamiltonian). Set by setLKParameters; the identity is the pattern of the defaults A = B, C = 0.
+        inline static Eigen::Matrix3d sign_pattern {Eigen::Matrix3d::Identity()};
+
         static void setLKParameters(double A_LK, double B_LK, double C_LK){
             weight::LKMatrix::A_LK = A_LK;
             weight::LKMatrix::B_LK = B_LK;
             weight::LKMatrix::C_LK = C_LK;
+            updateSignPattern();
+        }
+
+        // Relative tolerance on the direction k_hat below which diagonalizeLKHamiltonian treats a component as 0, or two
+        // magnitudes as equal (canonicalDirection).
+        inline static constexpr double gauge_tol {1e-9};
+
+        // k_hat = k / |k|, with every direction within gauge_tol of a symmetry plane or line mapped to one canonical
+        // value, signs kept. The gauge fixing below is discontinuous exactly there (the sign of a component, the order
+        // of the wedge sort, which of the two wedges next to a mirror plane its points are reduced from, and the solver's free rotation in
+        // the degenerate pair on (100) and (111)), so two momenta that are equal physically but differ by rounding
+        // (a cached k against one rebuilt as (k - w) + w) could get different bases; with the canonical input they
+        // get bitwise the same one, on every line of the diagram:
+        //   - |k_hat_i| < gauge_tol becomes +0 (never -0: the sign rule must see "not negative");
+        //   - magnitudes closer than gauge_tol become equal (their mean), so the wedge sort falls back to index order;
+        //   - (100), (110), (111) get the exact magnitudes 1, 1/sqrt(2), 1/sqrt(3): there the input must be bitwise
+        //     identical, not only equal up to rounding, since the degenerate pair's eigenvectors are arbitrary;
+        //   - any other snapped direction is renormalised (tied entries stay bitwise equal, zeros stay 0).
+        // A generic direction (no component below tol, no tie) is the plain k / |k|, bitwise. The snap moves k_hat by
+        // at most ~gauge_tol, a relative change of that order in the energies of those directions only.
+        // Not covered: a band structure degenerate at every k (C = A - B with C != 0), where the solver's rotation
+        // is free everywhere and only bitwise-equal momenta are safe.
+        static std::array<double, 3> canonicalDirection(const std::array<double, 3> & k){
+            const double n {std::sqrt(k[0]*k[0] + k[1]*k[1] + k[2]*k[2])};
+            std::array<double, 3> d {k[0]/n, k[1]/n, k[2]/n};
+            std::array<double, 3> m {std::abs(d[0]), std::abs(d[1]), std::abs(d[2])};
+            bool changed {false};
+            for (int i {0}; i < 3; ++i) {
+                if (m[i] < gauge_tol && d[i] != 0.) { m[i] = 0.; changed = true; }
+                else if (m[i] < gauge_tol) { m[i] = 0.; }       // also turns -0 into +0
+            }
+
+            std::array<int, 3> o {0, 1, 2};     // magnitudes descending
+            std::stable_sort(o.begin(), o.end(), [&m](int a, int b){ return m[a] > m[b]; });
+            const int nonzero {(m[o[0]] > 0.) + (m[o[1]] > 0.) + (m[o[2]] > 0.)};
+            const bool tie01 {m[o[1]] > 0. && m[o[0]] - m[o[1]] < gauge_tol};
+            const bool tie12 {m[o[2]] > 0. && m[o[1]] - m[o[2]] < gauge_tol};
+
+            if (nonzero == 1) {
+                changed = changed || m[o[0]] != 1.;
+                m[o[0]] = 1.;
+            }
+            else if (nonzero == 2 && tie01) {
+                static const double r2 {std::sqrt(0.5)};
+                changed = true;
+                m[o[0]] = m[o[1]] = r2;
+            }
+            else if (nonzero == 3 && tie01 && tie12) {
+                static const double r3 {std::sqrt(1./3.)};
+                changed = true;
+                m[o[0]] = m[o[1]] = m[o[2]] = r3;
+            }
+            else {
+                if (tie01 && m[o[0]] != m[o[1]]) { m[o[0]] = m[o[1]] = 0.5*(m[o[0]] + m[o[1]]); changed = true; }
+                if (tie12 && m[o[1]] != m[o[2]]) { m[o[1]] = m[o[2]] = 0.5*(m[o[1]] + m[o[2]]); changed = true; }
+                if (changed) {
+                    const double s {1./std::sqrt(m[0]*m[0] + m[1]*m[1] + m[2]*m[2])};
+                    for (double & x : m) { x *= s; }
+                }
+            }
+            if (!changed) { return d; }
+            for (int i {0}; i < 3; ++i) { d[i] = d[i] < 0. ? -m[i] : m[i]; }
+            return d;
         }
 
         static choice selectionRulesLK(const std::array<double, 3> k){
@@ -93,27 +161,73 @@ namespace weight {
                 return result;
             }
 
-            double k_modulus {std::sqrt(k[0]*k[0] + k[1]*k[1] + k[2]*k[2])};
-            double k_vector[3] {k[0]/k_modulus, k[1]/k_modulus, k[2]/k_modulus};
-            double k_vector_temp[3] {k[0]/k_modulus, k[1]/k_modulus, k[2]/k_modulus};
+            // the direction, snapped onto the symmetry planes and lines it lies on up to rounding (see there): both the
+            // wedge reduction and the Hamiltonian are built from it
+            const std::array<double, 3> k_hat {canonicalDirection(k)};
 
-            choice eigenv_gauge = selectionRulesLK(k); // cast k-values into IBZ
+            choice eigenv_gauge = selectionRulesLK(k_hat); // cast k-values into IBZ
 
-            k_vector[0] = std::abs(k_vector_temp[eigenv_gauge.position[0]]);
-            k_vector[1] = std::abs(k_vector_temp[eigenv_gauge.position[1]]);
-            k_vector[2] = std::abs(k_vector_temp[eigenv_gauge.position[2]]);
+            double k_vector[3];
+            k_vector[0] = std::abs(k_hat[eigenv_gauge.position[0]]);
+            k_vector[1] = std::abs(k_hat[eigenv_gauge.position[1]]);
+            k_vector[2] = std::abs(k_hat[eigenv_gauge.position[2]]);
 
+            Eigen::Matrix3d eigenvectors;
+            Eigen::RowVector3d eigenvalues;
+            if(!wedgeEigen(k_vector, eigenvectors, eigenvalues)){
+                const double nan {std::numeric_limits<double>::quiet_NaN()};
+                result << nan, nan, nan,
+                          nan, nan, nan,
+                          nan, nan, nan,
+                          nan, nan, nan;
+                return result; // solver failure sentinel (NaN, never a valid eigenvalue)
+            }
+
+            // sign gauge: band n's eigenvector is given the sign of its interior sign pattern, sign_pattern.col(n).
+            // In the wedge interior k_0 > k_1 > k_2 > 0 no component of a band can vanish (for C != 0, A - B): u_i = 0
+            // forces C k_i (k . u) = 0, so u = e_i x k, and the remaining two rows then require
+            // (A - B - C)(k_j^2 - k_k^2) = 0, i.e. a boundary or the spherical point. A conical degeneracy inside
+            // would flip u around it, so there is none either. Each band therefore keeps one sign pattern over the
+            // whole interior, and u . s = sum |u_i| > 0 there: the rule is the earlier "reference component
+            // positive" one (sign_pattern is taken from it), bitwise. On a boundary the components that survive keep
+            // the interior signs, so u . s > 0 picks the limit from the interior, with no tolerance: noise in a
+            // component that vanishes by symmetry cannot decide the sign. Back in the original frame, U(k) on a
+            // boundary is thus the continuous extension from the wedge that the reduction g maps onto this one; the
+            // two wedges next to a mirror plane differ only in the sign of the band odd under that mirror. Not
+            // covered: the degenerate pair on (100) and (111), which has no interior limit (it depends on the
+            // direction of approach) and stays the solver's choice, deterministic for the canonical input; and
+            // C = A - B, degenerate at every k.
+            for (int n {0}; n < 3; ++n) {
+                if(eigenvectors.col(n).dot(sign_pattern.col(n)) < 0.){ eigenvectors.col(n) *= -1; }
+            }
+
+            // back from the IBZ to the original sector: the transformation is a signed permutation T with
+            // T(position[i], i) = sign[i] and zeros elsewhere, so T * eigenvectors just moves row i to row
+            // position[i] with that sign - applied directly instead of as a matrix product
+            Eigen::Matrix3d new_eigenvectors;
+            for (int i {0}; i < 3; ++i) {
+                new_eigenvectors.row(eigenv_gauge.position[i]) = static_cast<double>(eigenv_gauge.sign[i]) * eigenvectors.row(i);
+            }
+
+            eigenvectors = new_eigenvectors;
+
+            result << eigenvalues, eigenvectors;
+
+            // return packed result
+            return result;
+        }
+
+        // H_LK at the wedge direction k_vector (k_0 >= k_1 >= k_2 >= 0, unit length), diagonalised, without the sign
+        // gauge; false on a solver failure
+        static bool wedgeEigen(const double k_vector[3], Eigen::Matrix3d & eigenvectors, Eigen::RowVector3d & eigenvalues){
             // build LK Hamiltonian matrix (3x3)
             Eigen::Matrix3d LK_matrix;
             LK_matrix << A_LK*k_vector[0]*k_vector[0] + B_LK*(k_vector[1]*k_vector[1] + k_vector[2]*k_vector[2]), C_LK*k_vector[0]*k_vector[1], C_LK*k_vector[0]*k_vector[2],
                      C_LK*k_vector[0]*k_vector[1], A_LK*k_vector[1]*k_vector[1] + B_LK*(k_vector[0]*k_vector[0] + k_vector[2]*k_vector[2]), C_LK*k_vector[1]*k_vector[2],
                      C_LK*k_vector[0]*k_vector[2], C_LK*k_vector[1]*k_vector[2], A_LK*k_vector[2]*k_vector[2] + B_LK*(k_vector[0]*k_vector[0] + k_vector[1]*k_vector[1]);
-    
+
             // Bands are always returned in ascending eigenvalue order: band 0 has the smallest 1/(2m), i.e. it
             // is the heaviest band and the lowest in energy, whatever A, B and C are.
-            Eigen::Matrix3d eigenvectors;
-            Eigen::RowVector3d eigenvalues;
-
             if(C_LK == 0.){
                 // C = 0: the matrix is diagonal, d_i = B + (A - B) k_i^2, so the eigenvectors are the axes
                 // themselves - taken exactly instead of from the solver. For A = B the matrix is A * I only
@@ -137,44 +251,31 @@ namespace weight {
             else {
                 Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigensolver;
                 eigensolver.compute(LK_matrix); // compute eigenvalues and eigenvectors
-
-                if(eigensolver.info() != 0){
-                    const double nan {std::numeric_limits<double>::quiet_NaN()};
-                    result << nan, nan, nan,
-                              nan, nan, nan,
-                              nan, nan, nan,
-                              nan, nan, nan;
-                    return result; // solver failure sentinel (NaN, never a valid eigenvalue)
-                }
+                if(eigensolver.info() != 0){ return false; }
 
                 eigenvectors = eigensolver.eigenvectors(); // eigenvector matrix
                 eigenvalues = eigensolver.eigenvalues().transpose(); // eigenvalues row vector (from smallest to largest)
             }
+            return true;
+        }
 
-            // sign gauge: each eigenvector's component along its reference axis is made positive. In the wedge
-            // the bands, in ascending order, lie mostly along axes 0, 1, 2 for A <= B and along 2, 1, 0 for
-            // A > B (near (100): eigenvalues A on axis 0 and B on axes 1, 2), so the reference axis of band n
-            // is n or 2 - n (the same vectors as the earlier positive-diagonal rule applied before reordering;
-            // tests/test_lk_sphere checks that the basis is continuous inside every wedge)
+        // sign_pattern for the current A, B, C: the eigenvector signs at the interior direction (3, 2, 1)/sqrt(14), in
+        // the gauge "reference component positive" (reference axis n of band n for A <= B, 2 - n for A > B: the bands
+        // lie mostly along axes 0, 1, 2, resp. 2, 1, 0; inside the wedge that component is never 0). An exactly zero
+        // component (C = 0) keeps 0. At C = A - B every k is degenerate and the pattern is the solver's choice.
+        static void updateSignPattern(){
+            static const double n14 {std::sqrt(14.)};
+            const double k_vector[3] {3./n14, 2./n14, 1./n14};
+            Eigen::Matrix3d eigenvectors;
+            Eigen::RowVector3d eigenvalues;
+            if(!wedgeEigen(k_vector, eigenvectors, eigenvalues)){ sign_pattern.setIdentity(); return; }
             const bool reversed {A_LK > B_LK};
             for (int n {0}; n < 3; ++n) {
                 if(eigenvectors(reversed ? 2 - n : n, n) < 0){ eigenvectors.col(n) *= -1; }
+                for (int i {0}; i < 3; ++i) {
+                    sign_pattern(i, n) = std::abs(eigenvectors(i, n)) < 1e-12 ? 0. : (eigenvectors(i, n) > 0. ? 1. : -1.);
+                }
             }
-
-            // back from the IBZ to the original sector: the transformation is a signed permutation T with
-            // T(position[i], i) = sign[i] and zeros elsewhere, so T * eigenvectors just moves row i to row
-            // position[i] with that sign - applied directly instead of as a matrix product
-            Eigen::Matrix3d new_eigenvectors;
-            for (int i {0}; i < 3; ++i) {
-                new_eigenvectors.row(eigenv_gauge.position[i]) = static_cast<double>(eigenv_gauge.sign[i]) * eigenvectors.row(i);
-            }
-
-            eigenvectors = new_eigenvectors;
-
-            result << eigenvalues, eigenvectors;
-
-            // return packed result
-            return result;
         }
 
         // diagonalizes LK Hamiltonian and returns eigenvalues (no eigenvectors), for effective mass exact estimator
@@ -186,7 +287,9 @@ namespace weight {
             // case - H_LK vanishes at the extremum, so nothing is split, and 1 rather than 0 only
             // because the caller inverts it for the mass. See there for the full reasoning.
             // Away from k = 0 this function returns the solver's ascending order, the same band order
-            // as diagonalizeLKHamiltonian.
+            // as diagonalizeLKHamiltonian. It uses the plain k / |k|, not canonicalDirection: without
+            // eigenvectors there is no gauge to keep stable, and the eigenvalues differ from
+            // diagonalizeLKHamiltonian's by at most ~gauge_tol (relative), only next to a symmetry plane.
             if(numerical::isEqual(k[0],0) && numerical::isEqual(k[1],0) && numerical::isEqual(k[2],0)){
                 eigenvalues << 1., 1., 1.;
                 return eigenvalues;

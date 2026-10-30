@@ -66,6 +66,11 @@ namespace numerical {
         // ends' bases may then differ by a gauge flip on a symmetry plane of p, and the trace closes wrongly
         bool ends_not_at_p {false};
 
+        // the cached trace against the gauge-free Tr[prod_i U_i A_i U_i^T] of the stored bases and actions (orbital
+        // basis, head to tail), relative to max(|P_ref|_F, |trace|): equal only if every overlap matches its stored
+        // bases and the trace closes on the same basis it opens with, whatever produced the overlaps
+        double reference_trace_dev {0.};
+
         double trace_before {0.};       // diagram_head->right_component.trace() as found
         double trace_after {0.};        // ... after the rebuild
 
@@ -86,6 +91,7 @@ namespace numerical {
                 && max_shift_dev <= tol.exact
                 && max_ph_action_dev <= tol.exact
                 && closing_basis_dev <= tol.flip
+                && reference_trace_dev <= tol.flip
                 && end_momentum_dev <= tol.momentum && !ends_not_at_p
                 && !sign_mismatch
                 && relativeTraceChange() <= tol.flip;
@@ -170,7 +176,9 @@ namespace numerical {
         if (n_external != cfg->external_ph_manager->current_length) { ++rep.bad_lines; }
 
         // ---- 3. cached state vs k and tau, as stored -----------------------------------------
+        Eigen::Matrix3d p_ref {Eigen::Matrix3d::Identity()};
         for (Vertex * v {head}; v != tail; v = v->next) {
+            p_ref = p_ref * v->baseWF * v->el_prop_action.diagonal().asDiagonal() * v->baseWF.transpose();
             const Eigen::Matrix<double, 4, 3> eig {weight::LKMatrix::diagonalizeLKHamiltonian(v->k)};
             const Eigen::Matrix3d U {eig.block<3,3>(1,0)};
             const std::array<double, 3> m {weight::LKMatrix::computeEffMassfromEigenval(
@@ -202,6 +210,10 @@ namespace numerical {
             const double dev {(v->vertex_wf_component - expected_wf).cwiseAbs().maxCoeff()};
             rep.max_overlap_dev = std::max(rep.max_overlap_dev, dev);
             if (dev > tol.flip) { ++rep.overlap_flips; }
+        }
+        {
+            const double scale {std::max(p_ref.norm(), std::abs(rep.trace_before))};
+            rep.reference_trace_dev = scale > 0. ? std::abs(p_ref.trace() - rep.trace_before) / scale : 0.;
         }
         if (tail->prev != head) {
             rep.closing_basis_dev = (tail->prev->baseWF - head->baseWF).cwiseAbs().maxCoeff();
@@ -266,6 +278,7 @@ namespace numerical {
         std::uint64_t total_flips {0};
         double worst_overlap_dev {0.};
         double worst_trace_change {0.};
+        double worst_reference_dev {0.};
         SanitizeReport last {};
 
         diagram_sanitizer(diagram_cfg * cfg, std::uint64_t period = 100000, SanitizeTolerances tol = {})
@@ -281,6 +294,7 @@ namespace numerical {
             total_flips += static_cast<std::uint64_t>(last.overlap_flips);
             worst_overlap_dev = std::max(worst_overlap_dev, last.max_overlap_dev);
             worst_trace_change = std::max(worst_trace_change, last.relativeTraceChange());
+            worst_reference_dev = std::max(worst_reference_dev, last.reference_trace_dev);
             if (!last.clean(tol)) { ++dirty_runs; }
             assert(last.clean(tol) && "diagram_sanitizer: diagram state inconsistent (see `last`)");
         }

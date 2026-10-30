@@ -1,6 +1,6 @@
 // diagonalizeLKHamiltonian over the unit k sphere.
 //
-// For A > B (AlAs) and A < B (swapped), on a theta x phi grid:
+// For AlAs (A > B), A < B (swapped) and a scan of C for both orderings (test::lkCases), on a theta x phi grid:
 //   - the returned columns diagonalise H_LK(k_hat) built in the ORIGINAL frame (so the IBZ fold and
 //     unfold are right), each paired with the eigenvalue returned next to it, and are orthonormal;
 //   - eigenvalues come back ascending, for A > B as for A <= B, at every point;
@@ -148,11 +148,13 @@ int main(int argc, char ** argv){
     if (argc == 3 && std::strcmp(argv[1], "--write") == 0) { out = std::fopen(argv[2], "w"); }
 
     test::Checks check {"diagonalizeLKHamiltonian on the unit k sphere"};
-    const std::array<double, 3> swapped {test::AlAs[1], test::AlAs[0], test::AlAs[2]};
-    scan(check, "A > B", test::AlAs, out);
-    scan(check, "A < B", swapped, nullptr);
-    high_symmetry(check, "A > B", test::AlAs);
-    high_symmetry(check, "A < B", swapped);
+    // AlAs, A and B swapped, and the C scan (test::lkCases)
+    bool first {true};
+    for (const test::LKCase & c : test::lkCases()) {
+        scan(check, c.label.c_str(), c.abc, first ? out : nullptr);
+        high_symmetry(check, c.label.c_str(), c.abc);
+        first = false;
+    }
 
     if (out != nullptr) { std::fclose(out); std::printf("  wrote %s (A > B scan)\n", argv[2]); }
     return check.exit_code();
