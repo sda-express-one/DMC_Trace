@@ -27,6 +27,7 @@ literature
 
 # ignore python scripts
 *.py
+!plot_rhat.py
 
 # ignore jupyter notebooks
 *.ipynb

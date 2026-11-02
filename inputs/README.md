@@ -150,7 +150,8 @@ The outputs are:
 - `<prefix>_rhat.dat`, the same history for plotting: one numeric row per checkpoint, `checkpoint steps batches`,
   then `<scalar>_rbulk <scalar>_rfold <scalar>_essb <scalar>_esst` for each monitored scalar, then `pass
   consecutive`. The first line holds the column names after `#`, so `numpy.genfromtxt(path, names=True)` reads it
-  (`d['n_ext_rbulk']`); `nan` before the window exists. Also appended live;
+  (`d['n_ext_rbulk']`); `nan` before the window exists. Also appended live; plot it with
+  `python python_scripts/plot_rhat.py <prefix>_rhat.dat` (R-hat and ESS against steps, see `--help`);
 - `<prefix>_run.dat`, with the input, the run statistics, the negative-sign fraction and the update acceptances;
 - `<prefix>_input.json`, the full input actually used.
 
