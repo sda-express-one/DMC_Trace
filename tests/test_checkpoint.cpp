@@ -159,7 +159,8 @@ static void estimator_round_trip(test::Checks & check){
         return a.n_measured == b.n_measured && a.normalised().mass_ratio_par == b.normalised().mass_ratio_par
             && a.normalised().mass_ratio_perp_error == b.normalised().mass_ratio_perp_error; });
     ok += round_trip("green_func", gf, mk_gf, [](const auto & a, const auto & b){
-        return a.hits == b.hits && a.n_selected == b.n_selected && a.n_order0 == b.n_order0 && a.normalised().trace == b.normalised().trace; });
+        return a.hits == b.hits && a.n_selected == b.n_selected && a.n_order0 == b.n_order0 && a.normalised().trace == b.normalised().trace
+            && a.normalised().orbital == b.normalised().orbital; });
     ok += round_trip("green_trace", gt, mk_gt, [](const auto & a, const auto & b){
         return a.hits == b.hits && a.n_selected == b.n_selected && a.n_order0 == b.n_order0 && a.normalised().trace == b.normalised().trace
             && a.normalised().negative == b.normalised().negative; });

@@ -3,7 +3,8 @@
 //     G_nm(bin) = delta_nm * (1/w) * int_bin e^{-E_n(p) tau} dtau,
 // through the whole chain: chg_tau's proposal and ratio, the order-0 normalisation, the removal of
 // e^{mu tau_D}, and the jackknife errors. Checked over several fixed-seed chains (deterministic):
-//   - every sample is order 0, and every off-diagonal element is exactly 0;
+//   - every sample is order 0, and every off-diagonal band element is 0 (to rounding: samples are accumulated in
+//     the orbital basis and rotated back to the bands at p);
 //   - diagonal components and the trace agree with the exact values, with each chain's own
 //     jackknife errors: chi^2/dof close to 1 (errors calibrated) and no outlier pull.
 #include <array>
@@ -23,7 +24,7 @@ int main(){
     const long SAMPLES {3000000};
 
     bool all_order0 {true};
-    double worst_offdiag {0.}, chi2_comp {0.}, chi2_trace {0.}, worst_pull {0.};
+    double worst_offdiag {0.}, max_diag {0.}, chi2_comp {0.}, chi2_trace {0.}, worst_pull {0.};
     int dof_comp {0}, dof_trace {0};
     for (int c {0}; c < CHAINS; ++c) {
         test::Diagram d {9000ULL + static_cast<unsigned long long>(c), p, 4, 4};
@@ -44,6 +45,7 @@ int main(){
             for (int n {0}; n < 3; ++n) {
                 for (int m {0}; m < 3; ++m) {
                     if (n != m) { worst_offdiag = std::max(worst_offdiag, static_cast<double>(std::fabs(R.mean[b][3*n + m]))); }
+                    else { max_diag = std::max(max_diag, static_cast<double>(std::fabs(R.mean[b][3*n + m]))); }
                 }
             }
             if (b >= CHECKED_BINS) { continue; }    // the tail bins hold too few samples to test errors
@@ -60,7 +62,8 @@ int main(){
     }
 
     check(all_order0, "every sample of every chain is order 0");
-    check(worst_offdiag == 0., "off-diagonal elements exactly 0 in every bin (max |G_nm|, n != m: %.1e)", worst_offdiag);
+    check(worst_offdiag < 1e-12 * max_diag, "off-diagonal band elements 0 to rounding in every bin (max |G_nm|, n != m: %.1e, "
+          "max |G_nn| %.1e)", worst_offdiag, max_diag);
     // dof ~ 288 / 96: a correct estimator gives chi^2/dof within a few times sqrt(2/dof) of 1
     check(chi2_comp/dof_comp > 0.7 && chi2_comp/dof_comp < 1.35,
           "diagonal components vs exact, jackknife errors: chi^2/dof = %.1f/%d = %.3f", chi2_comp, dof_comp, chi2_comp/dof_comp);

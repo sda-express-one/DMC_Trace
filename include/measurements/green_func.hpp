@@ -14,8 +14,9 @@
 #include <simplemc/serialize/concepts.hpp>
 #include "diagram/diagram_config.hpp"
 
-// Binned estimator of the band-matrix Green function G_nm(p, tau) - or, selecting phonons present at
-// the imaginary-time boundary, of the corresponding P function - with jackknife error bars.
+// Binned estimator of the matrix Green function G(p, tau) - or, selecting phonons present at the
+// imaginary-time boundary, of the corresponding P function - in the orbital basis and in the band basis at
+// p, with jackknife error bars.
 //
 // The chain samples diagrams with weight |W|, W = tr(P) * (couplings^2, phonon propagators, e^{mu tau_D})
 // where P = diagram_head->right_component is the diagram's band matrix. Everything multiplying tr(P) is
@@ -31,14 +32,19 @@
 // constant e^{-mu tau_b} (measurement::binScale) is applied to the results after the jackknife, in long double.
 //
 // Boundary phonons: each external line is a phonon present at tau = 0 = tau_D, and with m of them the
-// end segments carry p - sum(w), not p. boundary_phonons selects which diagrams are accumulated:
-//   0      only diagrams without external lines: the vacuum sector, i.e. G_nm(p, tau)
+// end segments carry k_end = p - sum(w), not p. boundary_phonons selects which diagrams are accumulated:
+//   0      only diagrams without external lines: the vacuum sector, i.e. G(p, tau)
 //   1, 2.. only diagrams with exactly that many external lines
 //   < 0    every diagram: the full trace over boundary states (P function)
-// Indices n, m are bands in the order diagonalizeLKHamiltonian returns them at the end segments'
-// momentum. For selection 0 that momentum is always p, so components are well defined (at a
-// non-degenerate p). For any other selection it varies from diagram to diagram, so only the trace of
-// the result is labelling-independent; the components are kept for inspection.
+// Bases: P is a matrix in the band basis at k_end, which varies from diagram to diagram outside the vacuum
+// sector. Each sample is therefore rotated to the orbital basis with the head's own eigenvectors,
+// U P U^T (U = diagram_head->baseWF = U(k_end), as in qp_weights_measurement), and the orbital matrix is what
+// is accumulated: it is well defined in every sector. The band-basis result is U_p^T G_orb U_p, with U_p the
+// eigenvectors at p (bands in the order diagonalizeLKHamiltonian returns them), computed from the batch means
+// inside the jackknife. In the vacuum sector k_end = p, U = U_p and it is the electron's band matrix (at a
+// non-degenerate p; on a degenerate line only the trace over the degenerate pair is gauge independent). In
+// the other sectors it is the orbital result written in the eigenbasis of H(p), not the electron's bands.
+// The trace is the same in both bases.
 //
 // Normalisation: the order-0 diagram (no phonon line at all) has the known weight
 // sum_n e^{-(E_n(p) - mu) tau}, whose integral Z_0 over (0, tau_max] is exact. Order-0 samples are
@@ -46,7 +52,7 @@
 //     G_nm(bin) = Z_0 / bin_width * <x_nm,bin> / <x_0>
 // where x_nm,bin is a sample's contribution to that bin and component and x_0 its order-0 indicator.
 //
-// Statistics: every sample is one vector of size 9*n_bins + 1 - index 9*bin + 3*n + m for the
+// Statistics: every sample is one vector of size 9*n_bins + 1 - index 9*bin + 3*i + j for the orbital
 // components, the last index for the order-0 indicator - accumulated sparsely (at most 10 non-zero
 // entries) in a simplemc batch accumulator. Batch means of batches longer than the autocorrelation
 // time are close to independent, and the delete-one-batch jackknife of the ratio above then gives
@@ -66,6 +72,7 @@ struct green_func_measurement {
     const int n_bins {0};
     const double tau_max {0.};
     const double bin_width {0.};
+    const Eigen::Matrix3d U_p;          // band basis at p, for the band-basis result
 
     acc_type acc;                       // one vector sample per measure(); count() = number of samples
     std::vector<std::uint64_t> hits;    // selected samples per bin (diagnostic)
@@ -74,10 +81,12 @@ struct green_func_measurement {
     std::uint64_t n_order0 {0};         // samples with no phonon line at all
 
     struct result {
-        std::vector<std::array<long double, 9>> mean;    // per bin, row-major [3*n + m]
+        std::vector<std::array<long double, 9>> mean;    // band basis at p: per bin, row-major [3*n + m]
         std::vector<std::array<long double, 9>> error;   // jackknife standard error
         std::vector<long double> trace;
         std::vector<long double> trace_error;
+        std::vector<std::array<long double, 9>> orbital;         // orbital basis: per bin, row-major [3*i + j]
+        std::vector<std::array<long double, 9>> orbital_error;
     };
 
     green_func_measurement(diagram_cfg * cfg, std::array<double, 3> p, int n_bins, int boundary_phonons = 0,
@@ -86,7 +95,8 @@ struct green_func_measurement {
     void measure();
 
     // The estimator before binScale, as a function of the batch means x: entries [9*bin + 3*n + m] are
-    // the components, entries [9*n_bins + bin] the traces.
+    // the band-basis components, entries [9*n_bins + bin] the traces, entries [10*n_bins + 9*bin + 3*i + j]
+    // the orbital components.
     Eigen::VectorXd unscaled(const Eigen::VectorXd & x) const;
 
     // Raw delete-one-batch jackknife of unscaled() - use it for covariances (multiply entry i by the
@@ -98,8 +108,8 @@ struct green_func_measurement {
     // means (the estimator applied to the full-run means) and jackknife errors, binScale applied
     result normalised() const;
 
-    // one line per bin: tau_centre hits, mean and error of G_00 ... G_22, mean and error of the trace;
-    // preceded by '#' metadata lines
+    // one line per bin: tau_centre hits, mean and error of the band-basis G_00 ... G_22, of the trace, and
+    // of the orbital-basis G_xx ... G_zz; preceded by '#' metadata lines
     void write(const std::string & path) const;
 
     // several ranks (collective): merges the batches of every rank into acc and sums the counters, on every rank
