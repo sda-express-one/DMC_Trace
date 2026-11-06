@@ -47,6 +47,9 @@ TO_VERIFY
 # markdown directory
 markdown_notes
 
+# latex directory
+latex_notes
+
 # runs directory
 runs
 

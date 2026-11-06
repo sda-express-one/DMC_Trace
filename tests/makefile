@@ -42,13 +42,25 @@ run: all
 	done; \
 	if [ -n "$$failed" ]; then echo "FAILED:$$failed"; exit 1; else echo "all $(words $(TESTS)) tests passed"; fi
 
+# micro-benchmarks (tools/bench_*.cpp, header-only): release flags as in the main build, not part of all/run
+#   make -C tests bench    then e.g.  taskset -c 4 build/tests/bench_lk_green [A B C tau]
+BENCH_FLAGS = --std=c++23 -O3 -DNDEBUG -Wall -Wextra -Werror -Wpedantic -MMD -MP -I$(ROOT)/include $(EXTERNAL_INCLUDES) \
+              -DOMPI_SKIP_MPICXX -DMPICH_SKIP_MPICXX
+BENCHES = $(addprefix $(BUILD_DIR)/,$(basename $(notdir $(wildcard tools/bench_*.cpp))))
+
+bench: $(BENCHES)
+
+$(BUILD_DIR)/bench_%: tools/bench_%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(BENCH_FLAGS) $< -o $@
+
 clean:
 	rm -rf $(BUILD_DIR)
 
--include $(OBJECTS:.o=.d) $(BINARIES:=.d)
+-include $(OBJECTS:.o=.d) $(BINARIES:=.d) $(BENCHES:=.d)
 
 # the objects are only reached through the pattern rules above, so make would otherwise treat them as
 # intermediate files and delete them after every build
 .SECONDARY: $(OBJECTS)
 
-.PHONY: all run clean
+.PHONY: all run bench clean
