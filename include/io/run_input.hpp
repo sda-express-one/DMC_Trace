@@ -38,8 +38,9 @@
 // Order of use: input::load -> input::applyGlobals (before any measurement is constructed: eff_mass* capture
 // A_LK, B_LK at construction) -> build the diagram -> makeUpdateSet (updates/update_set.hpp) with the weights.
 // the production estimators, in the order of main's measurement set: the keys of the "measurements" block
-inline constexpr std::array<std::string_view, 8> measurement_names {
-    "gs_energy", "qp_weights", "eff_mass", "eff_mass_uniaxial", "green_func", "green_trace", "green_laguerre", "avg_sign"};
+inline constexpr std::array<std::string_view, 9> measurement_names {
+    "gs_energy", "qp_weights", "eff_mass", "eff_mass_uniaxial", "green_func", "green_trace", "green_laguerre", "avg_sign",
+    "statistics"};
 
 struct run_input {
     struct Model {
@@ -84,6 +85,8 @@ struct run_input {
         int boundary_phonons {0};               // green_*: n >= 0 exactly n external lines (0: vacuum sector), < 0 all
         bool split_sign {false};
         bool sign_free {false};                 // gs_energy, qp_weights: also the sign-free (|W| ensemble) values
+        double statistics_tau_cutoff {0.};      // statistics: only diagrams with tau_D >= statistics_tau_cutoff
+        bool statistics_split_sign {false};     // statistics: also the averages over the positive and negative diagrams
     };
 
     struct Thermalization {
@@ -127,7 +130,7 @@ struct run_input {
     Output output;
     Checkpoint checkpoint;
     std::map<std::string, double> update_weights;   // every name of update_names, set by the constructor
-    std::map<std::string, bool> measurements_active; // every name of measurement_names: gs_energy and qp_weights on
+    std::map<std::string, bool> measurements_active; // every name of measurement_names: gs_energy, qp_weights, statistics on
 
     run_input();
 
@@ -209,6 +212,8 @@ void simplemc_save_input_config(S s, const run_input & in){
     ms.save_at("boundary_phonons", in.measurements.boundary_phonons);
     ms.save_at("split_sign", in.measurements.split_sign);
     ms.save_at("sign_free", in.measurements.sign_free);
+    ms.save_at("statistics_tau_cutoff", in.measurements.statistics_tau_cutoff);
+    ms.save_at("statistics_split_sign", in.measurements.statistics_split_sign);
 
     auto t {s["thermalization"]};
     t.save_at("enabled", in.thermalization.enabled);
@@ -281,6 +286,8 @@ void simplemc_load_input_config(const S & s, run_input & in){
         ms.try_load_at("boundary_phonons", in.measurements.boundary_phonons);
         ms.try_load_at("split_sign", in.measurements.split_sign);
         ms.try_load_at("sign_free", in.measurements.sign_free);
+        ms.try_load_at("statistics_tau_cutoff", in.measurements.statistics_tau_cutoff);
+        ms.try_load_at("statistics_split_sign", in.measurements.statistics_split_sign);
     }
     if (s.has("thermalization")) {
         const auto t {s["thermalization"]};

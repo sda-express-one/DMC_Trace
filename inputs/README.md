@@ -107,6 +107,8 @@ Which estimators run is set in the top-level `"measurements"` block (below).
 | `boundary_phonons` | 0 | green_*: 0 gives the vacuum sector G(p, τ); n > 0 exactly n external lines; < 0 all of them (the P function) |
 | `split_sign` | false | green_trace: also keep the positive and negative parts per bin; their ratio is the average sign per bin |
 | `sign_free` | false | gs_energy, qp_weights: also report the sign-free values, plain means over the sampled \|W\| ensemble (E_sf, Z_N_sf, <N>_sf, R_sf). E_sf ≤ E₀; when ⟨s⟩ is consistent with 0 the signed values are uncontrolled and tend to the sign-free ones. Adds the columns `E_sf err` to `_gs_energy.dat` and `_gs_energy_chains.dat`, and `Z_N_sf err` plus the `_sf` header lines to `_qp_weights.dat`. Part of the checkpoint fingerprint |
+| `statistics_tau_cutoff` | 0 | statistics: only diagrams with τ_D ≥ this value are collected (0: all). Must be < `tau_max` (≤ `tau_D_start` at fixed length) |
+| `statistics_split_sign` | false | statistics: also the means over the positive and over the negative diagrams, and the fraction of positive ones (columns `plus err minus err`; minus is `nan` without negative diagrams) |
 
 ## `config.thermalization`: the R̂-controlled thermalization
 The ranks are the chains. Thermalization ends when R̂ and the bulk and tail ESS pass for `consecutive` checkpoints
@@ -183,7 +185,8 @@ continued chain matches an uninterrupted one up to rounding.
 used), `checkpoint`, and which estimators are active (one switched on later starts empty). The model, the diagram
 settings and the estimators' settings (`config.model`, `config.diagram`, `config.measurements`) must stay the same;
 the job stops with a message otherwise, as it does when the number of ranks differs or a file is missing. A job
-killed during thermalization has no usable checkpoint yet and must be started again.
+killed during thermalization has no usable checkpoint yet and must be started again. Checkpoints written before the
+`statistics` estimator existed cannot be restarted (their fingerprint and estimator list differ).
 
 ## `params`: the production run, and the wall-time budget of the whole job
 This is simplemc's `simulation_params`, with project defaults (`input::defaultParams()`) instead of simplemc's own.
@@ -238,6 +241,7 @@ All defaults are 1. A larger weight on one side of a pair pays only where its pr
 | `green_func` | off | variable length |
 | `green_trace` | off | variable length |
 | `avg_sign` | off | — (the average sign ⟨s⟩ = Σ W / Σ \|W\|: at fixed τ the signed over the absolute trace sum at τ_D, with variable length over τ_D ≥ `tau_min`) |
+| `statistics` | on | — (average number of internal and external phonon lines, n_int, n_ext and their sum, over τ_D ≥ `statistics_tau_cutoff`: the plain mean over the sampled ensemble and the signed ⟨s n⟩/⟨s⟩; `_statistics.dat`, per chain in `_statistics_chains.dat`) |
 
 ## Validation rules (checked before the run)
 - **LK parameters:** within the bounds listed under `config.model`.

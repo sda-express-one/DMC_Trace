@@ -126,6 +126,15 @@ int main(){
                          && in.output.prefix == def.output.prefix};
         check(set && kept, "a partial file sets the keys it names (2 phonon modes, fixed tau, weights) and keeps every other default");
 
+        // statistics: active by default, its two keys read from config.measurements
+        writeText(f, R"({"config": {"measurements": {"statistics_tau_cutoff": 2.5, "statistics_split_sign": true}}})");
+        run_input st;
+        simplemc::simulation_params sp {input::defaultParams()};
+        input::load(f, sp, st);
+        check(def.measurements_active.at("statistics") && def.measurements.statistics_tau_cutoff == 0. && !def.measurements.statistics_split_sign
+              && st.measurements.statistics_tau_cutoff == 2.5 && st.measurements.statistics_split_sign && st.measurements_active.at("statistics"),
+              "statistics: active by default (cutoff 0, no split); statistics_tau_cutoff and statistics_split_sign are read");
+
         writeText(f, R"({"config": {"diagram": {"tau_fixd": true}}})");
         const bool typo {throws([&]{ run_input x; simplemc::simulation_params p; input::load(f, p, x); })};
         writeText(f, R"({"updates": {"add_internal": {"weight": 2}}})");
@@ -203,6 +212,13 @@ int main(){
             in.measurements_active["green_laguerre"] = true; }), "green_laguerre at fixed tau");
         expect(rejected([](run_input & in){ in.measurements.laguerre_l_max = 0; }), "laguerre_l_max < 1");
         expect(rejected([](run_input & in){ in.measurements.laguerre_scale = -1.; }), "laguerre_scale < 0");
+        expect(rejected([](run_input & in){ in.measurements.statistics_tau_cutoff = -1.; }), "statistics_tau_cutoff < 0");
+        expect(rejected([](run_input & in){ in.measurements.statistics_tau_cutoff = in.diagram.tau_max; }),
+               "statistics_tau_cutoff >= tau_max (variable length)");
+        expect(rejected([](run_input & in){
+            in.diagram.tau_fixed = true; in.diagram.tau_D_start = in.diagram.tau_max; in.diagram.mu = 0.;
+            for (const auto n : length_changing_updates) { in.update_weights[std::string {n}] = 0.; }
+            in.measurements.statistics_tau_cutoff = 2. * in.diagram.tau_max; }), "statistics_tau_cutoff > tau_D_start (fixed length)");
         check(ok == total, "validate: %d/%d settings classified correctly (4 valid, the rest rejected)", ok, total);
     }
 

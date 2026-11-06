@@ -4,7 +4,8 @@
 // chains are thermalized under R-hat control (the ranks are the chains: measurements/thermalization_control.hpp),
 // then the production run measures the active estimators, the ranks are combined and the root writes
 //     <prefix>_<estimator>.dat   one per active estimator (its write())
-//     <prefix>_<estimator>_chains.dat  gs_energy, eff_mass, eff_mass_uniaxial, avg_sign: every chain's own value and error
+//     <prefix>_<estimator>_chains.dat  gs_energy, eff_mass, eff_mass_uniaxial, avg_sign, statistics: every chain's own value
+//                                      and error
 //     <prefix>_thermalization.dat  the R-hat checkpoints, per scalar (appended live)
 //     <prefix>_rhat.dat            the same, one numeric row per checkpoint for plotting
 //     <prefix>_run.dat           input, run parameters, update statistics, sign, thermalization outcome
@@ -67,6 +68,7 @@
 #include "measurements/green_laguerre.hpp"
 #include "measurements/gs_energy.hpp"
 #include "measurements/qp_weights.hpp"
+#include "measurements/statistics.hpp"
 #include "measurements/thermalization_control.hpp"
 #include "updates/dmc_update_set.hpp"
 
@@ -359,7 +361,9 @@ namespace {
             simplemc::measurement {green_laguerre_measurement {&cfg, d.p, in.measurements.laguerre_l_max, in.measurements.laguerre_scale,
                                                                in.measurements.green_n_bins, in.measurements.boundary_phonons, nb},
                                    "green_laguerre"},
-            simplemc::measurement {avg_sign_measurement {&cfg, d.tau_min, d.tau_fixed, nb}, "avg_sign"}};
+            simplemc::measurement {avg_sign_measurement {&cfg, d.tau_min, d.tau_fixed, nb}, "avg_sign"},
+            simplemc::measurement {statistics_measurement {&cfg, in.measurements.statistics_tau_cutoff,
+                                                           in.measurements.statistics_split_sign, nb}, "statistics"}};
         simplemc::simulation_stats stats;
         if (restart) {
             // the rest of the chain's state: rng, update counters, estimators' data, production stats so far; then the
@@ -426,6 +430,9 @@ namespace {
             if (in.measurements_active.at("avg_sign")) {
                 writeChains(comm, *ms.get<avg_sign_measurement>("avg_sign"), "avg_sign", in);
             }
+            if (in.measurements_active.at("statistics")) {
+                writeChains(comm, *ms.get<statistics_measurement>("statistics"), "statistics", in);
+            }
         }
         int failed {0};
         ms.for_each([&](auto & m){
@@ -491,6 +498,13 @@ namespace {
                 if (const auto * e {ms.get<avg_sign_measurement>("avg_sign")}; e != nullptr && e->acc.batches().size() >= 2) {
                     const auto r {e->normalised()};
                     std::printf("<s> = %.8Lg +- %.3Lg\n", r.sign, r.sign_error);
+                }
+            }
+            if (in.measurements_active.at("statistics")) {
+                if (const auto * e {ms.get<statistics_measurement>("statistics")}; e != nullptr && e->acc.batches().size() >= 2) {
+                    const auto r {e->normalised()};
+                    std::printf("<n_int> = %.8g +- %.3g   <n_ext> = %.8g +- %.3g   (signed: %.8g +- %.3g   %.8g +- %.3g)\n",
+                                r.value[0], r.error[0], r.value[1], r.error[1], r.value[3], r.error[3], r.value[4], r.error[4]);
                 }
             }
             std::printf("diagramc: %llu steps in %.1f s (summed over the chains); results in %s_*\n",

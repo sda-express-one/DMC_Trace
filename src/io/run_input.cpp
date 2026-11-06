@@ -13,7 +13,7 @@
 run_input::run_input(){
     for (const std::string_view name : update_names) { update_weights[std::string {name}] = 1.; }
     for (const std::string_view name : measurement_names) {
-        measurements_active[std::string {name}] = name == "gs_energy" || name == "qp_weights";
+        measurements_active[std::string {name}] = name == "gs_energy" || name == "qp_weights" || name == "statistics";
     }
 }
 
@@ -126,6 +126,14 @@ namespace input {
         require(std::isfinite(ms.laguerre_scale) && ms.laguerre_scale >= 0., "measurements: laguerre_scale >= 0 (0: automatic)");
         // green_*: < 0 selects every sector (the full trace over boundary states, the P function), 0..max_external_lines one sector
         require(ms.boundary_phonons <= d.max_external_lines, "measurements: boundary_phonons <= max_external_lines (< 0: all sectors)");
+        // statistics: a cutoff above every sampled tau_D would leave the estimator empty
+        require(std::isfinite(ms.statistics_tau_cutoff) && ms.statistics_tau_cutoff >= 0., "measurements: statistics_tau_cutoff >= 0");
+        if (d.tau_fixed) {
+            require(ms.statistics_tau_cutoff <= d.tau_D_start, "measurements: tau_fixed requires statistics_tau_cutoff <= tau_D_start");
+        }
+        else {
+            require(ms.statistics_tau_cutoff < d.tau_max, "measurements: statistics_tau_cutoff < tau_max");
+        }
 
         const auto & t {in.thermalization};
         if (t.enabled) {
@@ -254,10 +262,11 @@ namespace input {
                      in.start.n_internal_min, in.start.n_internal_max, in.start.n_external_min, in.start.n_external_max, in.start.w_spread);
         std::fprintf(fp, "# rng: seed = %llu\n", static_cast<unsigned long long>(in.rng.seed));
         std::fprintf(fp, "# measurements: n_batches = %zu  green_n_bins = %d  boundary_phonons = %d  split_sign = %d  sign_free = %d"
-                         "  laguerre_l_max = %d  laguerre_scale = %g\n",
+                         "  laguerre_l_max = %d  laguerre_scale = %g  statistics_tau_cutoff = %g  statistics_split_sign = %d\n",
                      in.measurements.n_batches, in.measurements.green_n_bins, in.measurements.boundary_phonons,
                      in.measurements.split_sign ? 1 : 0, in.measurements.sign_free ? 1 : 0,
-                     in.measurements.laguerre_l_max, in.measurements.laguerre_scale);
+                     in.measurements.laguerre_l_max, in.measurements.laguerre_scale,
+                     in.measurements.statistics_tau_cutoff, in.measurements.statistics_split_sign ? 1 : 0);
         std::fprintf(fp, "# thermalization: enabled = %d  monitor tau_D/sign/energy/orbital = %d/%d/%d/%d  monitor_n_batches = %zu  rhat_max = %.4f  "
                          "ESS bulk/tail >= %.1f/%.1f and per split chain >= %.1f/%.1f  max_ess_fraction = %.2f  consecutive = %d  root = %d  live_every = %d\n",
                      t.enabled ? 1 : 0, t.monitor_tau_D ? 1 : 0, t.monitor_sign ? 1 : 0, t.monitor_energy ? 1 : 0, t.monitor_orbital ? 1 : 0, t.monitor_n_batches,

@@ -24,6 +24,7 @@
 #include "diagram/diagram_io.hpp"
 #include "io/checkpoint.hpp"
 #include "measurements/avg_sign.hpp"
+#include "measurements/statistics.hpp"
 #include "measurements/eff_mass.hpp"
 #include "measurements/eff_mass_uniaxial.hpp"
 #include "measurements/green_func.hpp"
@@ -139,11 +140,12 @@ static void estimator_round_trip(test::Checks & check){
     const auto mk_gt {[&]{ return green_trace_measurement {c, p, 20, -1, true, 16}; }};
     const auto mk_gl {[&]{ return green_laguerre_measurement {c, p, 12, 0., 20, -1, 16}; }};
     const auto mk_as {[&]{ return avg_sign_measurement {c, 0., true, 16}; }};
+    const auto mk_st {[&]{ return statistics_measurement {c, 0., true, 16}; }};
     auto gs {mk_gs()}; auto qp {mk_qp()}; auto em {mk_em()}; auto eu {mk_eu()}; auto gf {mk_gf()}; auto gt {mk_gt()}; auto gl {mk_gl()};
-    auto as {mk_as()};
+    auto as {mk_as()}; auto st {mk_st()};
     for (int i {0}; i < 100003; ++i) {        // not a multiple of the batch size: partial batches are saved too
         k.step(d.rng);
-        if (i % 5 == 0) { gs.measure(); qp.measure(); em.measure(); eu.measure(); gf.measure(); gt.measure(); gl.measure(); as.measure(); }
+        if (i % 5 == 0) { gs.measure(); qp.measure(); em.measure(); eu.measure(); gf.measure(); gt.measure(); gl.measure(); as.measure(); st.measure(); }
     }
     int ok {0};
     ok += round_trip("gs_energy", gs, mk_gs, [](const auto & a, const auto & b){
@@ -169,8 +171,13 @@ static void estimator_round_trip(test::Checks & check){
             && a.normalised().coeff == b.normalised().coeff && a.normalised().trace_error == b.normalised().trace_error; });
     ok += round_trip("avg_sign", as, mk_as, [](const auto & a, const auto & b){
         return a.n_measured == b.n_measured && a.normalised().sign == b.normalised().sign; });
-    check(ok == 8, "estimator round trip through MessagePack: %d/8 estimators with identical results and counters "
-                   "(gs_energy, qp_weights, eff_mass, eff_mass_uniaxial, green_func, green_trace, green_laguerre, avg_sign)", ok);
+    ok += round_trip("statistics", st, mk_st, [](const auto & a, const auto & b){
+        return a.n_measured == b.n_measured && a.n_negative == b.n_negative && a.summary().size() == b.summary().size()
+            && a.normalised().value[0] == b.normalised().value[0] && a.normalised().error[1] == b.normalised().error[1]
+            && a.normalised().value[6] == b.normalised().value[6]; });
+    check(ok == 9, "estimator round trip through MessagePack: %d/9 estimators with identical results and counters "
+                   "(gs_energy, qp_weights, eff_mass, eff_mass_uniaxial, green_func, green_trace, green_laguerre, avg_sign, "
+                   "statistics)", ok);
 }
 
 // one fixed-length chain (alpha = 0.5 at A = B = 1) with gs_energy, run by simplemc::run

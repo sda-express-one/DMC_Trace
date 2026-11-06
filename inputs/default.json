@@ -26,7 +26,9 @@
             "laguerre_scale": 0.0,
             "n_batches": 256,
             "sign_free": false,
-            "split_sign": false
+            "split_sign": false,
+            "statistics_split_sign": false,
+            "statistics_tau_cutoff": 0.0
         },
         "model": {
             "A_LK": 1.0,
@@ -90,16 +92,19 @@
         "green_func": {
             "is_active": false
         },
-        "green_trace": {
+        "green_laguerre": {
             "is_active": false
         },
-        "green_laguerre": {
+        "green_trace": {
             "is_active": false
         },
         "gs_energy": {
             "is_active": true
         },
         "qp_weights": {
+            "is_active": true
+        },
+        "statistics": {
             "is_active": true
         }
     },
