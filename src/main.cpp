@@ -4,6 +4,7 @@
 // chains are thermalized under R-hat control (the ranks are the chains: measurements/thermalization_control.hpp),
 // then the production run measures the active estimators, the ranks are combined and the root writes
 //     <prefix>_<estimator>.dat   one per active estimator (its write())
+//     <prefix>_green_laguerre_cov.dat  the jackknife covariance of the Laguerre coefficients (green_laguerre write())
 //     <prefix>_<estimator>_chains.dat  gs_energy, eff_mass, eff_mass_uniaxial, avg_sign, statistics: every chain's own value
 //                                      and error
 //     <prefix>_thermalization.dat  the R-hat checkpoints, per scalar (appended live)

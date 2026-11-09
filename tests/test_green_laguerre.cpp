@@ -8,12 +8,23 @@
 //      tested: smaller than the histogram's in the bulk, larger near tau_max, where this chain's g is still large.)
 //   3. Order 0 (chg_tau only, as in test_order0): the coefficients agree with the exact ones of
 //      sum_n e^{-(E_n - mu) tau} on (0, tau_max] (by quadrature), and the rebuilt tr G with the exact partial
-//      sum, with each chain's own jackknife errors.
+//      sum, with each chain's own jackknife errors. The covariance is positive semidefinite, of numerical rank
+//      below l_max + 1 (each sample is a point on the curve phi(tau_D): the high coefficients are nearly linear
+//      combinations of the low ones); with the leading Q x Q block (well conditioned) and the
+//      Hartlap-corrected inverse the coefficient chi^2/dof is ~ 1.
+//   4. Covariance (in 2): result::coeff_cov equals a delete-one jackknife over the accumulator's batches written by
+//      hand, is symmetric, and its diagonal is coeff_error^2. write() puts it in <stem>_cov.dat, read back equal,
+//      with the singularity warning only when l_max + 1 >= N_b - 2.
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <random>
+#include <sstream>
+#include <string>
 #include <vector>
+#include <Eigen/Dense>
 #include "test_common.hpp"
 #include "updates/add_internal_ph.hpp"
 #include "updates/rm_internal_ph.hpp"
@@ -83,6 +94,7 @@ static void sameSamples(test::Checks & check, const char * label, int boundary_p
 
     green_trace_measurement T {cfg, p, NB, boundary_phonons, false};
     green_laguerre_measurement G {cfg, p, L, 0., NB, boundary_phonons};
+    green_laguerre_measurement few {cfg, p, L, 0., NB, boundary_phonons, 16};     // N_b < l_max + 3: the file warns
 
     // by hand: each sample's sign (0 if not selected), tau_D and order-0 indicator; summed at the end over the
     // samples of the accumulator's complete batches (the ones its means are taken over)
@@ -103,7 +115,7 @@ static void sameSamples(test::Checks & check, const char * label, int boundary_p
 
         const bool flip {step % 3 == 0};
         if (flip) { cfg->diagram_head->right_component *= -1.; }
-        T.measure(); G.measure();
+        T.measure(); G.measure(); few.measure();
 
         const int n_ext {cfg->external_ph_manager->current_length / 2};
         const int n_int {cfg->internal_ph_manager->current_length / 2};
@@ -154,6 +166,82 @@ static void sameSamples(test::Checks & check, const char * label, int boundary_p
     std::nth_element(ratio.begin(), ratio.begin() + ratio.size()/2, ratio.end());
     check(agree >= NB - 2, "%s: rebuilt tr G vs green_trace histogram: %d/%d bins agree; median error ratio Laguerre/histogram %.2f",
           label, agree, NB, ratio[ratio.size()/2]);
+
+    // covariance: delete-one jackknife over the batches, by hand
+    {
+        const auto bs {G.acc.batches()};
+        const std::size_t N {bs.size()};
+        Eigen::VectorXd total {Eigen::VectorXd::Zero(L + 2)};
+        for (const auto & b : bs) { total += b.mean(); }
+        std::vector<Eigen::VectorXd> f;
+        Eigen::VectorXd fbar {Eigen::VectorXd::Zero(L + 1)};
+        for (const auto & b : bs) {
+            const Eigen::VectorXd m {(total - b.mean()) / static_cast<double>(N - 1)};
+            f.push_back(static_cast<double>(z0) * m.head(L + 1) / m(L + 1));
+            fbar += f.back();
+        }
+        fbar /= static_cast<double>(N);
+        Eigen::MatrixXd C {Eigen::MatrixXd::Zero(L + 1, L + 1)};
+        for (const auto & fj : f) { C += (fj - fbar) * (fj - fbar).transpose(); }
+        C *= static_cast<double>(N - 1) / static_cast<double>(N);
+
+        const double cmax {C.cwiseAbs().maxCoeff()};
+        const double dev_cov {(rg.coeff_cov - C).cwiseAbs().maxCoeff() / cmax};
+        const double asym {(rg.coeff_cov - rg.coeff_cov.transpose()).cwiseAbs().maxCoeff() / cmax};
+        double dev_diag {0.};
+        for (int l {0}; l <= L; ++l) {
+            const double e {static_cast<double>(rg.coeff_error[l])};
+            dev_diag = std::max(dev_diag, std::abs(std::sqrt(rg.coeff_cov(l, l)) - e) / e);
+        }
+        const auto corr {[&C](int a, int b){ return C(a, b) / std::sqrt(C(a, a) * C(b, b)); }};
+        check(dev_cov < 1e-10 && asym == 0. && dev_diag < 1e-12,
+              "%s: coeff_cov vs hand jackknife over %zu batches: %.1e (rel. to max|C|); symmetric; sqrt(diag) vs "
+              "coeff_error %.1e; corr(g_0, g_1) = %.3f, corr(g_1, g_2) = %.3f", label, N, dev_cov, dev_diag, corr(0, 1), corr(1, 2));
+    }
+
+    // the covariance file, read back
+    {
+        const auto readCov {[](const std::string & path, bool & warned){
+            std::ifstream in {path};
+            std::vector<std::vector<double>> rows;
+            std::string line;
+            warned = false;
+            while (std::getline(in, line)) {
+                if (line.empty()) { continue; }
+                if (line[0] == '#') { warned = warned || line.rfind("# warning", 0) == 0; continue; }
+                std::istringstream ss {line};
+                std::vector<double> row;
+                for (double v; ss >> v;) { row.push_back(v); }
+                rows.push_back(row);
+            }
+            return rows;
+        }};
+        const std::filesystem::path dir {std::filesystem::temp_directory_path()};
+        const std::string main_path {(dir / ("dmc_test_laguerre_" + std::to_string(boundary_phonons + 1) + ".dat")).string()};
+        const std::string few_path {(dir / ("dmc_test_laguerre_few_" + std::to_string(boundary_phonons + 1) + ".dat")).string()};
+        G.write(main_path);
+        few.write(few_path);
+        bool warned_main {true}, warned_few {false};
+        const auto rows {readCov(green_laguerre_measurement::covariancePath(main_path), warned_main)};
+        readCov(green_laguerre_measurement::covariancePath(few_path), warned_few);
+        bool shape {rows.size() == static_cast<std::size_t>(L + 1)};
+        double dev_file {0.};
+        for (std::size_t l {0}; shape && l < rows.size(); ++l) {
+            shape = rows[l].size() == static_cast<std::size_t>(L + 1);
+            for (std::size_t m {0}; shape && m < rows[l].size(); ++m) {
+                const double v {rg.coeff_cov(static_cast<Eigen::Index>(l), static_cast<Eigen::Index>(m))};
+                dev_file = std::max(dev_file, std::abs(rows[l][m] - v) / std::max(std::abs(v), 1e-300));
+            }
+        }
+        check(shape && dev_file < 1e-14 && !warned_main && warned_few
+                  && green_laguerre_measurement::covariancePath("a/x.dat") == "a/x_cov.dat"
+                  && green_laguerre_measurement::covariancePath("x") == "x_cov",
+              "%s: %s: %d x %d, equal to coeff_cov (max rel. diff %.1e); warning only with %zu batches", label,
+              green_laguerre_measurement::covariancePath(main_path).c_str(), L + 1, L + 1, dev_file, few.acc.batches().size());
+        std::filesystem::remove(main_path); std::filesystem::remove(few_path);
+        std::filesystem::remove(green_laguerre_measurement::covariancePath(main_path));
+        std::filesystem::remove(green_laguerre_measurement::covariancePath(few_path));
+    }
 }
 
 static void order0(test::Checks & check){
@@ -161,8 +249,8 @@ static void order0(test::Checks & check){
     const int CHAINS {4}, NB {40}, L {30};
     const long SAMPLES {3000000};
 
-    double chi2_c {0.}, chi2_t {0.}, worst_pull {0.};
-    int dof_c {0}, dof_t {0};
+    double chi2_c {0.}, chi2_t {0.}, worst_pull {0.}, chi2_full {0.}, min_eig {1.};
+    int dof_c {0}, dof_t {0}, dof_full {0}, rank_max {0};
     bool all_order0 {true};
     for (int c {0}; c < CHAINS; ++c) {
         test::Diagram d {9000ULL + static_cast<unsigned long long>(c), p, 4, 4};
@@ -195,6 +283,19 @@ static void order0(test::Checks & check){
             const double pull {static_cast<double>((R.coeff[l] - exact[l]) / R.coeff_error[l])};
             chi2_c += pull*pull; ++dof_c; worst_pull = std::max(worst_pull, std::abs(pull));
         }
+        // with the covariance: chi^2 = r^T C_Q^{-1} r over the leading Q coefficients, Hartlap-corrected
+        {
+            const int Q {12};
+            Eigen::VectorXd r(Q);
+            for (int l {0}; l < Q; ++l) { r(l) = static_cast<double>(R.coeff[l]) - exact[l]; }
+            const double nb {static_cast<double>(G.acc.batches().size())};
+            const double hartlap {(nb - Q - 2.) / (nb - 1.)};
+            chi2_full += hartlap * r.dot(R.coeff_cov.topLeftCorner(Q, Q).ldlt().solve(r));
+            dof_full += Q;
+            const Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es {R.coeff_cov, Eigen::EigenvaluesOnly};
+            min_eig = std::min(min_eig, es.eigenvalues()(0) / es.eigenvalues()(L));
+            rank_max = std::max(rank_max, green_laguerre_measurement::numericalRank(R.coeff_cov));
+        }
         // the exact partial sum at the grid points, with e^{-mu tau}
         for (int j {0}; j < NB; ++j) {
             const double tau {static_cast<double>(R.tau[j])};
@@ -212,6 +313,12 @@ static void order0(test::Checks & check){
     // the grid values are strongly correlated (they share the coefficients): only a loose band on chi^2/dof
     check(chi2_t/dof_t > 0.2 && chi2_t/dof_t < 3., "order 0: rebuilt tr G vs exact partial sum: chi^2/dof = %.1f/%d = %.3f",
           chi2_t, dof_t, chi2_t/dof_t);
+    check(chi2_full/dof_full > 0.6 && chi2_full/dof_full < 1.6,
+          "order 0: leading 12 coefficients vs exact with the covariance (Hartlap): chi^2/dof = %.1f/%d = %.3f",
+          chi2_full, dof_full, chi2_full/dof_full);
+    check(min_eig > -1e-13 && rank_max > 12 && rank_max < L + 1,
+          "order 0: C positive semidefinite (smallest/largest eigenvalue %.1e), numerical rank %d of %d",
+          min_eig, rank_max, L + 1);
     check(worst_pull < 4.5, "order 0: no outlier: largest |pull| %.2f", worst_pull);
 }
 

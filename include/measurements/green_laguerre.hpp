@@ -49,6 +49,15 @@
 //
 // Statistics: one dense vector sample per measure() of size l_max + 2 (coefficients, then the order-0
 // indicator) in a simplemc batch accumulator; delete-one-batch jackknife; at least 2 full batches needed.
+// The coefficients are strongly correlated (every sample adds to every l, they share the Z_0/<x_0> norm), so
+// the full jackknife covariance of the g_l is reported too (result::coeff_cov, written to <path>_cov.dat):
+// needed for chi^2 tests, G rebuilt at a smaller truncation L (covariance B_L C_L B_L^T), sums of g_l and fits
+// of g_l. It is a sample estimate with N_b - 1 degrees of freedom: its inverse wants the Hartlap factor
+// (N_b - p - 2)/(N_b - 1) for p coefficients used, and it is singular for p >= N_b. It is also intrinsically
+// ill conditioned: every sample is a point on the one curve sign sqrt(s) psi(s tau_D), weighted by the distribution
+// of tau_D, so for larger l_max the higher coefficients are numerically linear combinations of the lower ones (order
+// 0 with s tau_max = 21: rank 20 of 31; a polaron run with s tau_max = 100: rank 48 of 81). The file reports the
+// numerical rank; invert a leading block, or use a truncated SVD.
 //
 // Several ranks: collect with simplemc_mpi_collect before calling normalised()/write().
 struct green_laguerre_measurement {
@@ -70,6 +79,7 @@ struct green_laguerre_measurement {
     struct result {
         std::vector<long double> coeff;         // g_l, l = 0 .. l_max
         std::vector<long double> coeff_error;
+        Eigen::MatrixXd coeff_cov;              // jackknife covariance of g_l, (l_max + 1) x (l_max + 1)
         std::vector<long double> tau;           // grid: centres of n_grid bins over [0, tau_max]
         std::vector<long double> trace;         // rebuilt tr G(p, tau)
         std::vector<long double> trace_error;
@@ -85,17 +95,26 @@ struct green_laguerre_measurement {
     Eigen::VectorXd unscaled(const Eigen::VectorXd & x) const;
 
     // Raw delete-one-batch jackknife of unscaled(). Throws simplemc::simplemc_exception with fewer than 2
-    // full batches.
+    // full batches. Welford accumulation of the replicates: the default one-pass sum of squares cancels ~8 digits
+    // (the replicates differ from their mean by ~ sigma/sqrt(N_b)), harmless for error bars but not for a
+    // covariance matrix that gets inverted.
     auto jackknifeUnscaled() const {
-        return simplemc::jackknife([this](const Eigen::VectorXd & x){ return unscaled(x); }, acc);
+        return simplemc::jackknife<simplemc::varalg::welford>([this](const Eigen::VectorXd & x){ return unscaled(x); }, acc);
     }
 
     // means (the estimator applied to the full-run means) and jackknife errors, e^{-mu tau_j} applied
     result normalised() const;
 
     // '#' metadata lines, then two blocks separated by two blank lines (gnuplot index 0 and 1):
-    // "l g_l err" and "tau trace err"
+    // "l g_l err" and "tau trace err". Also writes the coefficient covariance to covariancePath(path): '#'
+    // metadata lines, then l_max + 1 rows of l_max + 1 values (np.loadtxt reads it as the matrix).
     void write(const std::string & path) const;
+
+    // "<stem>_cov.dat" for "<stem>.dat", else path + "_cov"
+    static std::string covariancePath(const std::string & path);
+
+    // number of eigenvalues of the symmetric matrix C above 1e-12 times the largest (0 for C = 0)
+    static int numericalRank(const Eigen::MatrixXd & C);
 
     // several ranks (collective): merges the batches of every rank into acc and sums the counters, on every rank
     friend void simplemc_mpi_collect(const simplemc::mpi::communicator & comm, green_laguerre_measurement & m);

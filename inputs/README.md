@@ -103,7 +103,9 @@ Which estimators run is set in the top-level `"measurements"` block (below).
 | key | default | meaning |
 |---|---|---|
 | `n_batches` | 256 | batches of each estimator's accumulator; the jackknife errors come from the batch means |
-| `green_n_bins` | 100 | τ bins of green_func and green_trace over (0, τ_max] |
+| `green_n_bins` | 100 | τ bins of green_func and green_trace over (0, τ_max]; green_laguerre: its grid for the rebuilt tr G |
+| `laguerre_l_max` | 40 | green_laguerre: coefficients l = 0 .. `laguerre_l_max` |
+| `laguerre_scale` | 0 | green_laguerre: scale s of the Laguerre functions; 0 = 2 min_n(E_n(p) − μ), the order-0 decay rate |
 | `boundary_phonons` | 0 | green_*: 0 gives the vacuum sector G(p, τ); n > 0 exactly n external lines; < 0 all of them (the P function) |
 | `split_sign` | false | green_trace: also keep the positive and negative parts per bin; their ratio is the average sign per bin |
 | `sign_free` | false | gs_energy, qp_weights: also report the sign-free values, plain means over the sampled \|W\| ensemble (E_sf, Z_N_sf, <N>_sf, R_sf). E_sf ≤ E₀; when ⟨s⟩ is consistent with 0 the signed values are uncontrolled and tend to the sign-free ones. Adds the columns `E_sf err` to `_gs_energy.dat` and `_gs_energy_chains.dat`, and `Z_N_sf err` plus the `_sf` header lines to `_qp_weights.dat`. Part of the checkpoint fingerprint |
@@ -240,6 +242,7 @@ All defaults are 1. A larger weight on one side of a pair pays only where its pr
 | `eff_mass_uniaxial` | off | C = 0; fixed τ if p ≠ 0 |
 | `green_func` | off | variable length |
 | `green_trace` | off | variable length |
+| `green_laguerre` | off | variable length (Laguerre coefficients g_l of tr G(p, τ) e^{μτ} and the rebuilt tr G in `_green_laguerre.dat`; the jackknife covariance of the g_l, a dense (l_max+1)² matrix, in `_green_laguerre_cov.dat`. The coefficients are strongly correlated: use the covariance for χ², fits and G rebuilt at a smaller truncation. It is a sample estimate (for χ² over q coefficients multiply C_q⁻¹ by (N_b − q − 2)/(N_b − 1)) and of numerical rank below l_max + 1 for large l_max, given in its header: invert a leading block or use a truncated SVD) |
 | `avg_sign` | off | — (the average sign ⟨s⟩ = Σ W / Σ \|W\|: at fixed τ the signed over the absolute trace sum at τ_D, with variable length over τ_D ≥ `tau_min`) |
 | `statistics` | on | — (average number of internal and external phonon lines, n_int, n_ext and their sum, over τ_D ≥ `statistics_tau_cutoff`: the plain mean over the sampled ensemble and the signed ⟨s n⟩/⟨s⟩; `_statistics.dat`, per chain in `_statistics_chains.dat`) |
 
