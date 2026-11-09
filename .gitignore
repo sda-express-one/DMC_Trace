@@ -24,10 +24,12 @@ build
 bin
 include/diagramc/tmp
 literature
+__pycache__
 
 # ignore python scripts
 *.py
 !plot_rhat.py
+!plot_green.py
 
 # ignore jupyter notebooks
 *.ipynb
