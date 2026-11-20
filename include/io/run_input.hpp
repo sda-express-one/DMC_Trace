@@ -38,9 +38,9 @@
 // Order of use: input::load -> input::applyGlobals (before any measurement is constructed: eff_mass* capture
 // A_LK, B_LK at construction) -> build the diagram -> makeUpdateSet (updates/update_set.hpp) with the weights.
 // the production estimators, in the order of main's measurement set: the keys of the "measurements" block
-inline constexpr std::array<std::string_view, 9> measurement_names {
-    "gs_energy", "qp_weights", "eff_mass", "eff_mass_uniaxial", "green_func", "green_trace", "green_laguerre", "avg_sign",
-    "statistics"};
+inline constexpr std::array<std::string_view, 10> measurement_names {
+    "gs_energy", "gs_energy_channels", "qp_weights", "eff_mass", "eff_mass_uniaxial", "green_func", "green_trace",
+    "green_laguerre", "avg_sign", "statistics"};
 
 struct run_input {
     struct Model {

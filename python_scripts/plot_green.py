@@ -305,8 +305,8 @@ def main():
                 print(f"{sr['label']}: fit on [{t0}, {t1}]: not enough points ({how})")
                 continue
             (z, e0), (dz, de0), chi2, dof = r
-            print(f"{sr['label']}: fit on [{t0:g}, {t1:g}] ({how}): E0 = {e0:.6f} +- {de0:.6f}   "
-                  f"Z = {z:.6f} +- {dz:.6f}   chi2/dof = {chi2:.1f}/{dof} = {chi2 / max(dof, 1):.2f}")
+            print(f"{sr['label']}: fit on [{t0:g}, {t1:g}] ({how}): E0 = {e0:.6e} +- {de0:.1e}   "
+                  f"Z = {z:.6e} +- {dz:.1e}   chi2/dof = {chi2:.1f}/{dof} = {chi2 / max(dof, 1):.2f}")
             tt = np.linspace(t0, t1, 100)
             ax.plot(tt, model(tt, z, e0), color=INK, lw=1, ls="--", zorder=4)
 

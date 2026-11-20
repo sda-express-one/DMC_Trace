@@ -5,7 +5,8 @@
 // then the production run measures the active estimators, the ranks are combined and the root writes
 //     <prefix>_<estimator>.dat   one per active estimator (its write())
 //     <prefix>_green_laguerre_cov.dat  the jackknife covariance of the Laguerre coefficients (green_laguerre write())
-//     <prefix>_<estimator>_chains.dat  gs_energy, eff_mass, eff_mass_uniaxial, avg_sign, statistics: every chain's own value
+//     <prefix>_gs_energy_channels.dat  one energy per symmetry channel of p (vacuum sector; gs_energy_channels write())
+//     <prefix>_<estimator>_chains.dat  gs_energy, gs_energy_channels, eff_mass, eff_mass_uniaxial, avg_sign, statistics: every chain's own value
 //                                      and error
 //     <prefix>_thermalization.dat  the R-hat checkpoints, per scalar (appended live)
 //     <prefix>_rhat.dat            the same, one numeric row per checkpoint for plotting
@@ -68,6 +69,7 @@
 #include "measurements/green_trace.hpp"
 #include "measurements/green_laguerre.hpp"
 #include "measurements/gs_energy.hpp"
+#include "measurements/gs_energy_channels.hpp"
 #include "measurements/qp_weights.hpp"
 #include "measurements/statistics.hpp"
 #include "measurements/thermalization_control.hpp"
@@ -352,6 +354,7 @@ namespace {
         const std::size_t nb {in.measurements.n_batches};
         simplemc::measurement_set ms {
             simplemc::measurement {gs_energy_measurement {&cfg, d.p, d.tau_min, d.tau_fixed, nb, in.measurements.sign_free}, "gs_energy"},
+            simplemc::measurement {gs_energy_channels_measurement {&cfg, d.p, d.tau_min, d.tau_fixed, nb}, "gs_energy_channels"},
             simplemc::measurement {qp_weights_measurement {&cfg, d.p, d.tau_min, d.tau_fixed, nb, in.measurements.sign_free}, "qp_weights"},
             simplemc::measurement {eff_mass_measurement {&cfg, d.p, d.tau_min, d.tau_fixed, nb}, "eff_mass"},
             simplemc::measurement {eff_mass_uniaxial_measurement {&cfg, d.p, d.tau_min, d.tau_fixed, nb}, "eff_mass_uniaxial"},
@@ -422,6 +425,9 @@ namespace {
             if (in.measurements_active.at("gs_energy")) {
                 writeChains(comm, *ms.get<gs_energy_measurement>("gs_energy"), "gs_energy", in);
             }
+            if (in.measurements_active.at("gs_energy_channels")) {
+                writeChains(comm, *ms.get<gs_energy_channels_measurement>("gs_energy_channels"), "gs_energy_channels", in);
+            }
             if (in.measurements_active.at("eff_mass")) {
                 writeChains(comm, *ms.get<eff_mass_measurement>("eff_mass"), "eff_mass", in);
             }
@@ -480,6 +486,16 @@ namespace {
                 if (const auto * e {ms.get<gs_energy_measurement>("gs_energy")}; e != nullptr && e->acc.batches().size() >= 2) {
                     const auto r {e->normalised()};
                     std::printf("E0 = %.10Lg +- %.3Lg\n", r.energy, r.energy_error);
+                }
+            }
+            if (in.measurements_active.at("gs_energy_channels")) {
+                if (const auto * e {ms.get<gs_energy_channels_measurement>("gs_energy_channels")}; e != nullptr && e->acc.batches().size() >= 2) {
+                    const auto r {e->normalised()};
+                    for (int c {0}; c < e->nChannels(); ++c) {
+                        const auto i {static_cast<std::size_t>(c)};
+                        std::printf("E[channel %d, dim %d] = %.10Lg +- %.3Lg   (share %.4Lg)\n", c, e->channels[i].dim,
+                                    r.energy[i], r.energy_error[i], r.share[i]);
+                    }
                 }
             }
             if (in.measurements_active.at("eff_mass")) {

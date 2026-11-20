@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include "diagram/vertex.hpp"
+#include "measurements/tau_scaling.hpp"
 
 gs_energy_measurement::gs_energy_measurement(diagram_cfg * cfg, std::array<double, 3> p, double tau_min, bool tau_fixed,
                                              std::size_t n_batches, bool sign_free)
@@ -29,30 +30,12 @@ double gs_energy_measurement::estimate() const {
     const double trace {cfg->diagram_head->right_component.trace()};
     assert(std::isfinite(trace) && trace != 0.);
 
-    // -n: one integrated time per vertex
-    const int n_vertices {cfg->internal_ph_manager->current_length + cfg->external_ph_manager->current_length};
-
-    // sum_lines omega l; the even slot of each pair is the line's creation vertex (layout rule)
-    double phonon {0.};
-    for (int i {0}; i < cfg->internal_ph_manager->current_length; i += 2) {
-        const Vertex * v {cfg->internal_ph_manager->selectVertex(i)};
-        phonon += v->ph_energy * (v->conj_vertex->tau - v->tau);
-    }
-    for (int i {0}; i < cfg->external_ph_manager->current_length; i += 2) {
-        const Vertex * v {cfg->external_ph_manager->selectVertex(i)};
-        phonon += v->ph_energy * (tau - v->tau + v->conj_vertex->tau);
-    }
-
-    // sum_segments dtau_i tr(L_i wf_i E_i A_i wf_{i+1} R_{i+1}): the full trace with the segment's
-    // energies inserted next to its action (diagonal, so they commute)
+    // -n (one integrated time per vertex), sum_lines omega l, and sum_segments dtau_i tr(L_i wf_i E_i A_i wf_{i+1} R_{i+1}):
+    // the full trace with the segment's energies inserted next to its action (diagonal, so they commute)
+    const int n_vertices {tau_scaling::nVertices(*cfg)};
+    const double phonon {tau_scaling::phononTerm(*cfg)};
     double electron {0.};
-    for (const Vertex * v {cfg->diagram_head}; v != cfg->diagram_tail; v = v->next) {
-        const std::array<double, 3> e {v->electronEnergy()};
-        const Eigen::Matrix3d e_action {Eigen::Vector3d(e[0]*v->el_prop_action(0,0), e[1]*v->el_prop_action(1,1),
-                                                        e[2]*v->el_prop_action(2,2)).asDiagonal()};
-        electron += (v->tau_next - v->tau)
-                  * (v->left_component * v->vertex_wf_component * e_action * v->next->vertex_wf_component * v->next->right_component).trace();
-    }
+    tau_scaling::forEachSegment(*cfg, [&electron](double dtau, const auto & S){ electron += dtau * S.trace(); });
 
     return (-static_cast<double>(n_vertices) + phonon + electron / trace) / tau;
 }

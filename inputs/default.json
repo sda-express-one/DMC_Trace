@@ -101,6 +101,9 @@
         "gs_energy": {
             "is_active": true
         },
+        "gs_energy_channels": {
+            "is_active": false
+        },
         "qp_weights": {
             "is_active": true
         },
