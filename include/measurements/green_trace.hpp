@@ -79,10 +79,10 @@ struct green_trace_measurement {
     // with split_sign entries [n_bins + bin] the positive and [2*n_bins + bin] the negative part.
     Eigen::VectorXd unscaled(const Eigen::VectorXd & x) const;
 
-    // Raw delete-one-batch jackknife of unscaled() - use it for covariances (multiply entry i by the
+    // Raw delete-one-batch jackknife (Welford) of unscaled() - use it for covariances (multiply entry i by the
     // binScale of its bin). Throws simplemc::simplemc_exception with fewer than 2 full batches.
     auto jackknifeUnscaled() const {
-        return simplemc::jackknife([this](const Eigen::VectorXd & x){ return unscaled(x); }, acc);
+        return simplemc::jackknife<simplemc::varalg::welford>([this](const Eigen::VectorXd & x){ return unscaled(x); }, acc);
     }
 
     // means (the estimator applied to the full-run means) and jackknife errors, binScale applied

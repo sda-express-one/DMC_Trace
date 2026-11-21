@@ -119,7 +119,7 @@ namespace {
             }
             return out;
         }};
-        const auto jk {simplemc::jackknife(combos, acc)};
+        const auto jk {simplemc::jackknife<simplemc::varalg::welford>(combos, acc)};
         const Eigen::VectorXd mean {jk.naive_mean()}, err {jk.stderror()};
         Pulls p;
         for (Eigen::Index i {0}; i < mean.size(); ++i) {
@@ -143,7 +143,7 @@ int main(){
         const green_func_measurement::result R {r.G.normalised()};
         const double bw {r.G.bin_width};
         const auto ref_fn {[&](const Eigen::VectorXd & x){ return Eigen::VectorXd(r.z0 / bw / x(9*NB) * x.head(9*NB)); }};
-        const auto jk {simplemc::jackknife(ref_fn, r.ref)};
+        const auto jk {simplemc::jackknife<simplemc::varalg::welford>(ref_fn, r.ref)};
         const Eigen::VectorXd ref_mean {jk.naive_mean()}, ref_err {jk.stderror()};
 
         double scale {0.}, dev_mean {0.}, dev_err {0.}, dev_basis {0.}, dev_trace {0.};

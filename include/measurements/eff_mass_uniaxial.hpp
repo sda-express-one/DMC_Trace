@@ -106,7 +106,7 @@ struct eff_mass_uniaxial_measurement {
 
     // Throws simplemc::simplemc_exception with fewer than 2 full batches.
     auto jackknifeRatios() const {
-        return simplemc::jackknife([this](const Eigen::VectorXd & x){ return ratios(x); }, acc);
+        return simplemc::jackknife<simplemc::varalg::welford>([this](const Eigen::VectorXd & x){ return ratios(x); }, acc);
     }
 
     // means (the estimator applied to the full-run means) and jackknife errors

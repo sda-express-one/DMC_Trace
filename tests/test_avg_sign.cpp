@@ -76,7 +76,7 @@ int main(){
         gs_energy_measurement E {&c.d.cfg, {0., 0., 0.}, 0., true, 16};
         for (int i {0}; i < 2000000; ++i) { c.step(); if (i % 10 == 0) { S.measure(); E.measure(); } }
         const auto r {S.normalised()};
-        const auto jk {simplemc::jackknife([](const Eigen::VectorXd & x) -> Eigen::VectorXd { return Eigen::VectorXd::Constant(1, x(1)); }, E.acc)};
+        const auto jk {simplemc::jackknife<simplemc::varalg::welford>([](const Eigen::VectorXd & x) -> Eigen::VectorXd { return Eigen::VectorXd::Constant(1, x(1)); }, E.acc)};
         const double s_gs {jk.naive_mean()(0)}, err_gs {jk.stderror()(0)};
         const double s_count {1. - 2. * static_cast<double>(S.n_negative) / static_cast<double>(S.n_measured)};
         const std::vector<double> sum {S.summary()};

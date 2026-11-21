@@ -48,7 +48,7 @@
 // double.
 //
 // Statistics: one dense vector sample per measure() of size l_max + 2 (coefficients, then the order-0
-// indicator) in a simplemc batch accumulator; delete-one-batch jackknife; at least 2 full batches needed.
+// indicator) in a simplemc batch accumulator; delete-one-batch jackknife (Welford); at least 2 full batches needed.
 // The coefficients are strongly correlated (every sample adds to every l, they share the Z_0/<x_0> norm), so
 // the full jackknife covariance of the g_l is reported too (result::coeff_cov, written to <path>_cov.dat):
 // needed for chi^2 tests, G rebuilt at a smaller truncation L (covariance B_L C_L B_L^T), sums of g_l and fits
@@ -94,7 +94,7 @@ struct green_laguerre_measurement {
     // coefficients g_l, entries [l_max + 1 + j] the rebuilt g(tau_j).
     Eigen::VectorXd unscaled(const Eigen::VectorXd & x) const;
 
-    // Raw delete-one-batch jackknife of unscaled(). Throws simplemc::simplemc_exception with fewer than 2
+    // Raw delete-one-batch jackknife (Welford) of unscaled(). Throws simplemc::simplemc_exception with fewer than 2
     // full batches. Welford accumulation of the replicates: the default one-pass sum of squares cancels ~8 digits
     // (the replicates differ from their mean by ~ sigma/sqrt(N_b)), harmless for error bars but not for a
     // covariance matrix that gets inverted.

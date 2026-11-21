@@ -55,7 +55,7 @@
 //     + [0, n_max]          delta_{N_ext, N}
 //     + n_max + 1           N_ext
 //     + n_max + 2 .. + 10   delta_{N_ext, 0} (U P U^T / tr P)_ij, symmetrised, row-major
-// Every signed estimate is the delete-one-batch jackknife of a ratio to entry n_max + 11, every sign-free one
+// Every signed estimate is the delete-one-batch jackknife (Welford) of a ratio to entry n_max + 11, every sign-free one
 // that of a plain mean (at least 2 full batches needed). Several ranks: collect the accumulator with simplemc_mpi_collect(comm, acc), and sum
 // hits, n_measured and n_negative, before calling normalised()/write().
 struct qp_weights_measurement {
@@ -105,7 +105,7 @@ struct qp_weights_measurement {
 
     // Throws simplemc::simplemc_exception with fewer than 2 full batches.
     auto jackknifeRatios() const {
-        return simplemc::jackknife([this](const Eigen::VectorXd & x){ return ratios(x); }, acc);
+        return simplemc::jackknife<simplemc::varalg::welford>([this](const Eigen::VectorXd & x){ return ratios(x); }, acc);
     }
 
     // means (the estimator applied to the full-run means) and jackknife errors

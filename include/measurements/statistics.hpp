@@ -26,7 +26,7 @@
 //
 // Statistics: each measured diagram is the sample [n_int, n_ext, s, s n_int, s n_ext] (with split_sign also
 // [I+, I+ n_int, I+ n_ext]; the negative ones follow as total minus positive) in a simplemc batch accumulator; every
-// quantity is the delete-one-batch jackknife of its function of the batch means (at least 2 full batches).
+// quantity is the delete-one-batch jackknife (Welford) of its function of the batch means (at least 2 full batches).
 // Several ranks: collect with simplemc_mpi_collect(comm, m) before normalised()/write().
 struct statistics_measurement {
     using acc_type = simplemc::batch_acc_dynamic<double>;
@@ -54,7 +54,7 @@ struct statistics_measurement {
 
     // Throws simplemc::simplemc_exception with fewer than 2 full batches.
     auto jackknifeStats() const {
-        return simplemc::jackknife([this](const Eigen::VectorXd & x){ return quantities(x); }, acc);
+        return simplemc::jackknife<simplemc::varalg::welford>([this](const Eigen::VectorXd & x){ return quantities(x); }, acc);
     }
 
     result normalised() const;

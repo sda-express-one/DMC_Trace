@@ -55,7 +55,7 @@
 // Statistics: every sample is one vector of size 9*n_bins + 1 - index 9*bin + 3*i + j for the orbital
 // components, the last index for the order-0 indicator - accumulated sparsely (at most 10 non-zero
 // entries) in a simplemc batch accumulator. Batch means of batches longer than the autocorrelation
-// time are close to independent, and the delete-one-batch jackknife of the ratio above then gives
+// time are close to independent, and the delete-one-batch jackknife (Welford) of the ratio above then gives
 // error bars that include the autocorrelation, the fluctuation of the order-0 count and the
 // correlation between components - which is why the trace is estimated as its own function of the
 // batch means rather than from the component errors (the components of a bin are correlated at
@@ -99,10 +99,10 @@ struct green_func_measurement {
     // the orbital components.
     Eigen::VectorXd unscaled(const Eigen::VectorXd & x) const;
 
-    // Raw delete-one-batch jackknife of unscaled() - use it for covariances (multiply entry i by the
+    // Raw delete-one-batch jackknife (Welford) of unscaled() - use it for covariances (multiply entry i by the
     // binScale of its bin). Throws simplemc::simplemc_exception with fewer than 2 full batches.
     auto jackknifeUnscaled() const {
-        return simplemc::jackknife([this](const Eigen::VectorXd & x){ return unscaled(x); }, acc);
+        return simplemc::jackknife<simplemc::varalg::welford>([this](const Eigen::VectorXd & x){ return unscaled(x); }, acc);
     }
 
     // means (the estimator applied to the full-run means) and jackknife errors, binScale applied

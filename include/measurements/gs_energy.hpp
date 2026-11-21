@@ -39,7 +39,7 @@
 // E_sf.
 //
 // Statistics: each measured sample is the vector [s X, s] (with sign_free: [s X, s, X]) in a simplemc batch
-// accumulator; the energy is the delete-one-batch jackknife of the ratio of the first two means, E_sf that of
+// accumulator; the energy is the delete-one-batch jackknife (Welford) of the ratio of the first two means, E_sf that of
 // the third mean (at least 2 full batches needed).
 // Several ranks: collect the accumulator with simplemc_mpi_collect(comm, acc), and sum n_measured and
 // n_negative, before calling normalised()/write().
@@ -79,7 +79,7 @@ struct gs_energy_measurement {
 
     // Throws simplemc::simplemc_exception with fewer than 2 full batches.
     auto jackknifeRatio() const {
-        return simplemc::jackknife([this](const Eigen::VectorXd & x){ return ratio(x); }, acc);
+        return simplemc::jackknife<simplemc::varalg::welford>([this](const Eigen::VectorXd & x){ return ratio(x); }, acc);
     }
 
     result normalised() const;

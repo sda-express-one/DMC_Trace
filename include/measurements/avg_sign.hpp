@@ -26,7 +26,7 @@
 // problem (C = 0: exactly 1) and drops with tau_D and the number of vertices for degenerate bands (C != 0).
 //
 // Statistics: each sample is the 1-vector [s] in a simplemc batch accumulator, the error the delete-one-batch
-// jackknife of its mean (at least 2 full batches). Several ranks: collect with simplemc_mpi_collect(comm, m), which
+// jackknife (Welford) of its mean (at least 2 full batches). Several ranks: collect with simplemc_mpi_collect(comm, m), which
 // merges the batches and sums n_measured and n_negative, before normalised()/write().
 struct avg_sign_measurement {
     using acc_type = simplemc::batch_acc_dynamic<double>;
@@ -50,7 +50,7 @@ struct avg_sign_measurement {
 
     // Throws simplemc::simplemc_exception with fewer than 2 full batches.
     auto jackknifeMean() const {
-        return simplemc::jackknife([](const Eigen::VectorXd & x){ return Eigen::VectorXd(x); }, acc);
+        return simplemc::jackknife<simplemc::varalg::welford>([](const Eigen::VectorXd & x){ return Eigen::VectorXd(x); }, acc);
     }
 
     result normalised() const;

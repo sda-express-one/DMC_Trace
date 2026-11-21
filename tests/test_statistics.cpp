@@ -136,7 +136,7 @@ int main(){
             }
         }
         const auto r {S.normalised()};
-        const auto jk {simplemc::jackknife([](const Eigen::VectorXd & x){ return reference(x); }, ref)};
+        const auto jk {simplemc::jackknife<simplemc::varalg::welford>([](const Eigen::VectorXd & x){ return reference(x); }, ref)};
         const Eigen::VectorXd v {jk.naive_mean()}, e {jk.stderror()};
         double worst {0.};
         for (int i {0}; i < 13; ++i) {

@@ -50,7 +50,7 @@
 // tau_min / tau_fixed as in gs_energy_measurement. e^{mu tau_D} is a sampling device only and, at fixed
 // tau_D, a constant; with varying tau_D it reweights the lengths, which is harmless for converged samples.
 // Statistics and several ranks as in qp_weights_measurement: one sample per measured configuration in a
-// simplemc batch accumulator, delete-one-batch jackknife of the ratios to <s>.
+// simplemc batch accumulator, delete-one-batch jackknife (Welford) of the ratios to <s>.
 struct eff_mass_measurement {
     using acc_type = simplemc::batch_acc_dynamic<double>;
 
@@ -95,7 +95,7 @@ struct eff_mass_measurement {
 
     // Throws simplemc::simplemc_exception with fewer than 2 full batches.
     auto jackknifeRatios() const {
-        return simplemc::jackknife([this](const Eigen::VectorXd & x){ return ratios(x); }, acc);
+        return simplemc::jackknife<simplemc::varalg::welford>([this](const Eigen::VectorXd & x){ return ratios(x); }, acc);
     }
 
     // means (the estimator applied to the full-run means) and jackknife errors
