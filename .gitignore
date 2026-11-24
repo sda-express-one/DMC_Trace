@@ -61,3 +61,6 @@ config.local.mk
 # directory for outputs analysis
 local_outputs
 cluster_outputs
+
+# directory results
+results_DMC_trace

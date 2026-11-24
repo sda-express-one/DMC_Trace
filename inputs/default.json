@@ -24,6 +24,11 @@
             "green_n_bins": 100,
             "laguerre_l_max": 40,
             "laguerre_scale": 0.0,
+            "momentum_n_batches_3d": 64,
+            "momentum_n_bins_3d": 32,
+            "momentum_n_bins_r": 64,
+            "momentum_n_max": 8,
+            "momentum_scale": 0.0,
             "n_batches": 256,
             "sign_free": false,
             "split_sign": false,
@@ -87,6 +92,9 @@
             "is_active": false
         },
         "eff_mass_uniaxial": {
+            "is_active": false
+        },
+        "electron_momentum": {
             "is_active": false
         },
         "green_func": {

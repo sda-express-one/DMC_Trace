@@ -38,9 +38,9 @@
 // Order of use: input::load -> input::applyGlobals (before any measurement is constructed: eff_mass* capture
 // A_LK, B_LK at construction) -> build the diagram -> makeUpdateSet (updates/update_set.hpp) with the weights.
 // the production estimators, in the order of main's measurement set: the keys of the "measurements" block
-inline constexpr std::array<std::string_view, 10> measurement_names {
+inline constexpr std::array<std::string_view, 11> measurement_names {
     "gs_energy", "gs_energy_channels", "qp_weights", "eff_mass", "eff_mass_uniaxial", "green_func", "green_trace",
-    "green_laguerre", "avg_sign", "statistics"};
+    "green_laguerre", "avg_sign", "statistics", "electron_momentum"};
 
 struct run_input {
     struct Model {
@@ -87,6 +87,11 @@ struct run_input {
         bool sign_free {false};                 // gs_energy, qp_weights: also the sign-free (|W| ensemble) values
         double statistics_tau_cutoff {0.};      // statistics: only diagrams with tau_D >= statistics_tau_cutoff
         bool statistics_split_sign {false};     // statistics: also the averages over the positive and negative diagrams
+        double momentum_scale {0.};             // electron_momentum: k_s of the bin maps; 0 = from the thermalization (rms_k)
+        int momentum_n_bins_3d {32};            // electron_momentum: bins per axis of the 3D histogram
+        int momentum_n_bins_r {64};             // electron_momentum: bins of the radial histograms
+        int momentum_n_max {8};                 // electron_momentum: sectors N = 0 .. n_max (the last N >= n_max)
+        std::size_t momentum_n_batches_3d {64}; // electron_momentum: batches of the 3D accumulator
     };
 
     struct Thermalization {
@@ -214,6 +219,11 @@ void simplemc_save_input_config(S s, const run_input & in){
     ms.save_at("sign_free", in.measurements.sign_free);
     ms.save_at("statistics_tau_cutoff", in.measurements.statistics_tau_cutoff);
     ms.save_at("statistics_split_sign", in.measurements.statistics_split_sign);
+    ms.save_at("momentum_scale", in.measurements.momentum_scale);
+    ms.save_at("momentum_n_bins_3d", in.measurements.momentum_n_bins_3d);
+    ms.save_at("momentum_n_bins_r", in.measurements.momentum_n_bins_r);
+    ms.save_at("momentum_n_max", in.measurements.momentum_n_max);
+    ms.save_at("momentum_n_batches_3d", in.measurements.momentum_n_batches_3d);
 
     auto t {s["thermalization"]};
     t.save_at("enabled", in.thermalization.enabled);
@@ -288,6 +298,11 @@ void simplemc_load_input_config(const S & s, run_input & in){
         ms.try_load_at("sign_free", in.measurements.sign_free);
         ms.try_load_at("statistics_tau_cutoff", in.measurements.statistics_tau_cutoff);
         ms.try_load_at("statistics_split_sign", in.measurements.statistics_split_sign);
+        ms.try_load_at("momentum_scale", in.measurements.momentum_scale);
+        ms.try_load_at("momentum_n_bins_3d", in.measurements.momentum_n_bins_3d);
+        ms.try_load_at("momentum_n_bins_r", in.measurements.momentum_n_bins_r);
+        ms.try_load_at("momentum_n_max", in.measurements.momentum_n_max);
+        ms.try_load_at("momentum_n_batches_3d", in.measurements.momentum_n_batches_3d);
     }
     if (s.has("thermalization")) {
         const auto t {s["thermalization"]};

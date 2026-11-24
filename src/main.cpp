@@ -6,6 +6,8 @@
 //     <prefix>_<estimator>.dat   one per active estimator (its write())
 //     <prefix>_green_laguerre_cov.dat  the jackknife covariance of the Laguerre coefficients (green_laguerre write())
 //     <prefix>_gs_energy_channels.dat  one energy per symmetry channel of p (vacuum sector; gs_energy_channels write())
+//     <prefix>_electron_momentum.dat, _electron_momentum_3d.dat  n(k) per phonon sector and in 3D (electron_momentum write());
+//                                      the bin scale k_s comes from rms_k of the thermalization (or measurements.momentum_scale)
 //     <prefix>_<estimator>_chains.dat  gs_energy, gs_energy_channels, eff_mass, eff_mass_uniaxial, avg_sign, statistics: every chain's own value
 //                                      and error
 //     <prefix>_thermalization.dat  the R-hat checkpoints, per scalar (appended live)
@@ -62,6 +64,7 @@
 #include "io/checkpoint.hpp"
 #include "io/run_input.hpp"
 #include "measurements/convergence_monitor.hpp"
+#include "measurements/electron_momentum.hpp"
 #include "measurements/avg_sign.hpp"
 #include "measurements/eff_mass.hpp"
 #include "measurements/eff_mass_uniaxial.hpp"
@@ -276,6 +279,7 @@ namespace {
         bool thermalized {meta.thermalized}, therm_timed_out {meta.therm_timed_out};
         std::uint64_t therm_steps {meta.therm_steps};
         double therm_time {meta.therm_time};
+        double rms_k_therm {std::numeric_limits<double>::quiet_NaN()};    // mean rms_k of the final window, over the ranks
         if (in.thermalization.enabled && !restart) {
             simplemc::measurement_set therm {simplemc::measurement {convergence_monitor {&cfg, in.monitorOptions()}, "convergence"}};
             convergence_monitor & mon {therm.get<0>().value()};
@@ -319,6 +323,22 @@ namespace {
                     }
                 },
                 .stop_when = [&](const simplemc::simulation_ctx &){ return ctl.stopped(); }})};
+            {
+                // the scale of electron_momentum's bins: the monitor's rms_k over the last window (all of the run if it
+                // has no window yet), averaged over the ranks (collective: every rank uses the same k_s)
+                const auto & names {mon.names()};
+                const auto ik {static_cast<std::size_t>(std::find(names.begin(), names.end(), "rms_k") - names.begin())};
+                std::size_t B {0};
+                const std::vector<double> w {mon.window(B)};
+                double m {0.};
+                if (B > 0) {
+                    for (std::size_t b {0}; b < B; ++b) { m += w[ik * B + b]; }
+                    m /= static_cast<double>(B);
+                }
+                else if (mon.acc.count() > 0) { m = mon.acc.mean()(static_cast<Eigen::Index>(ik)); }
+                simplemc::mpi::all_reduce_in_place(m, MPI_SUM, comm);
+                rms_k_therm = m / comm.size();
+            }
             thermalized = ctl.thermalized();
             therm_timed_out = ctl.timedOut();
             therm_steps = ctx.steps_done;
@@ -352,6 +372,19 @@ namespace {
         //    start, so that eff_mass* capture the final tau_D of fixed-length runs.
         const auto & d {in.diagram};
         const std::size_t nb {in.measurements.n_batches};
+        // electron_momentum's k_s: the input's momentum_scale, else from rms_k of the thermalization, shifted to k - p
+        // (only a scale: <|k - p|^2> ~ <k^2> - p^2, floored at a tenth of rms_k). On a restart the checkpoint restores
+        // the original k_s. An inactive estimator gets the smallest layout (no 3D memory).
+        const bool em_active {in.measurements_active.at("electron_momentum")};
+        double k_scale {in.measurements.momentum_scale};
+        if (!(k_scale > 0.)) {
+            const double m {rms_k_therm}, p2 {d.p[0]*d.p[0] + d.p[1]*d.p[1] + d.p[2]*d.p[2]};
+            k_scale = std::isfinite(m) && m > 0. ? std::sqrt(std::max(m * m - p2, 0.01 * m * m)) : 1.;
+            if (em_active && !restart && !(std::isfinite(m) && m > 0.)) {
+                throw std::runtime_error("electron_momentum: no k_s - set measurements.momentum_scale > 0 or enable the thermalization");
+            }
+        }
+        if (root && em_active && !restart) { std::printf("diagramc: electron_momentum k_s = %.6g\n", k_scale); }
         simplemc::measurement_set ms {
             simplemc::measurement {gs_energy_measurement {&cfg, d.p, d.tau_min, d.tau_fixed, nb, in.measurements.sign_free}, "gs_energy"},
             simplemc::measurement {gs_energy_channels_measurement {&cfg, d.p, d.tau_min, d.tau_fixed, nb}, "gs_energy_channels"},
@@ -367,7 +400,13 @@ namespace {
                                    "green_laguerre"},
             simplemc::measurement {avg_sign_measurement {&cfg, d.tau_min, d.tau_fixed, nb}, "avg_sign"},
             simplemc::measurement {statistics_measurement {&cfg, in.measurements.statistics_tau_cutoff,
-                                                           in.measurements.statistics_split_sign, nb}, "statistics"}};
+                                                           in.measurements.statistics_split_sign, nb}, "statistics"},
+            simplemc::measurement {electron_momentum_measurement {&cfg, d.p, d.tau_min, d.tau_fixed, em_active ? nb : 2, k_scale,
+                                                                  em_active ? in.measurements.momentum_n_bins_3d : 2,
+                                                                  em_active ? in.measurements.momentum_n_bins_r : 2,
+                                                                  em_active ? in.measurements.momentum_n_max : 1,
+                                                                  em_active ? in.measurements.momentum_n_batches_3d : 2},
+                                   "electron_momentum"}};
         simplemc::simulation_stats stats;
         if (restart) {
             // the rest of the chain's state: rng, update counters, estimators' data, production stats so far; then the
@@ -468,6 +507,11 @@ namespace {
                          !meta.thermalization_enabled && !in.thermalization.enabled ? "not checked (thermalization disabled)"
                          : thermalized ? "yes (R-hat passed)" : therm_timed_out ? "NO (wall-time budget reached)" : "NO (step cap reached)",
                          static_cast<unsigned long long>(therm_steps), therm_time);
+            if (em_active) {
+                std::fprintf(f, "# electron_momentum: k_s = %.10g (%s)\n", ms.get<electron_momentum_measurement>("electron_momentum")->k_scale,
+                             in.measurements.momentum_scale > 0. ? "measurements.momentum_scale"
+                             : restart ? "from the checkpoint" : "rms_k of the thermalization");
+            }
             std::fprintf(f, "# wall-time budget = %.0f s for the whole job; production limit = %.0f s; production: %s; "
                             "%llu production steps per chain in this job\n",
                          budget, prod.max_time, prod_end, static_cast<unsigned long long>(prod_steps));
@@ -515,6 +559,12 @@ namespace {
                 if (const auto * e {ms.get<avg_sign_measurement>("avg_sign")}; e != nullptr && e->acc.batches().size() >= 2) {
                     const auto r {e->normalised()};
                     std::printf("<s> = %.8Lg +- %.3Lg\n", r.sign, r.sign_error);
+                }
+            }
+            if (em_active) {
+                if (const auto * e {ms.get<electron_momentum_measurement>("electron_momentum")}; e != nullptr && e->acc.batches().size() >= 2) {
+                    const auto r {e->normalised()};
+                    std::printf("electron_momentum: Z_0^t = %.8g +- %.3g   k_s = %.6g\n", r.Z[0], r.Z_error[0], e->k_scale);
                 }
             }
             if (in.measurements_active.at("statistics")) {

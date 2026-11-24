@@ -135,6 +135,11 @@ namespace input {
             require(ms.statistics_tau_cutoff < d.tau_max, "measurements: statistics_tau_cutoff < tau_max");
         }
 
+        require(std::isfinite(ms.momentum_scale) && ms.momentum_scale >= 0., "measurements: momentum_scale >= 0 (0: from the thermalization)");
+        require(ms.momentum_n_bins_3d >= 2 && ms.momentum_n_bins_r >= 2, "measurements: momentum_n_bins_3d, momentum_n_bins_r >= 2");
+        require(ms.momentum_n_max >= 1, "measurements: momentum_n_max >= 1");
+        require(ms.momentum_n_batches_3d >= 2, "measurements: momentum_n_batches_3d >= 2");
+
         const auto & t {in.thermalization};
         if (t.enabled) {
             require(t.min_bulk_ess > 0. && t.min_tail_ess > 0. && t.min_bulk_ess_per_split_chain > 0. && t.min_tail_ess_per_split_chain > 0.,
@@ -267,6 +272,10 @@ namespace input {
                      in.measurements.split_sign ? 1 : 0, in.measurements.sign_free ? 1 : 0,
                      in.measurements.laguerre_l_max, in.measurements.laguerre_scale,
                      in.measurements.statistics_tau_cutoff, in.measurements.statistics_split_sign ? 1 : 0);
+        std::fprintf(fp, "# measurements: momentum_scale = %g  momentum_n_bins_3d = %d  momentum_n_bins_r = %d  momentum_n_max = %d"
+                         "  momentum_n_batches_3d = %zu\n",
+                     in.measurements.momentum_scale, in.measurements.momentum_n_bins_3d, in.measurements.momentum_n_bins_r,
+                     in.measurements.momentum_n_max, in.measurements.momentum_n_batches_3d);
         std::fprintf(fp, "# thermalization: enabled = %d  monitor tau_D/sign/energy/orbital = %d/%d/%d/%d  monitor_n_batches = %zu  rhat_max = %.4f  "
                          "ESS bulk/tail >= %.1f/%.1f and per split chain >= %.1f/%.1f  max_ess_fraction = %.2f  consecutive = %d  root = %d  live_every = %d\n",
                      t.enabled ? 1 : 0, t.monitor_tau_D ? 1 : 0, t.monitor_sign ? 1 : 0, t.monitor_energy ? 1 : 0, t.monitor_orbital ? 1 : 0, t.monitor_n_batches,
